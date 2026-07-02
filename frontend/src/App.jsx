@@ -1,29 +1,38 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-
-// Pages (will be built in subsequent sub-tasks)
-// import Login from './pages/Login';
-// import Dashboard from './pages/Dashboard';
-// import Editor from './pages/Editor';
-// import Browse from './pages/Browse';
-// import BookProfile from './pages/BookProfile';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Onboarding from './pages/Onboarding';
+import Dashboard from './pages/Dashboard';
 
 function App() {
   return (
-    <div className="app">
+    <AuthProvider>
       <Routes>
-        {/* Placeholder route — pages will be added in Sub-Task 3 onwards */}
+        {/* Public routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+
+        {/* Onboarding — accessible when logged in but survey not done */}
+        <Route path="/onboarding" element={<Onboarding />} />
+
+        {/* Protected routes — require login + onboarding */}
         <Route
-          path="/"
+          path="/dashboard"
           element={
-            <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-              <h1>CanonVault</h1>
-              <p>Project scaffold is ready. Pages will be wired up in the next sub-tasks.</p>
-            </div>
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
           }
         />
+
+        {/* Default redirect */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-    </div>
+    </AuthProvider>
   );
 }
 
