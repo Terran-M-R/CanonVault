@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "migrate": "node src/db/run-migrations.js",
+    "db:test": "node src/db/test-connection.js"
   },
   "dependencies": {
     "axios": "^1.7.2",
