@@ -13,6 +13,7 @@ import {
   InlineNotification,
   Tag,
   Modal,
+  Toggle,
 } from '@carbon/react';
 import {
   ArrowLeft,
@@ -20,6 +21,7 @@ import {
   Upload,
   Save,
   SettingsAdjust,
+  MagicWand,
 } from '@carbon/icons-react';
 import { useAuth } from '../context/AuthContext';
 import { logout } from '../services/auth';
@@ -58,6 +60,14 @@ export default function StoryEditor() {
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
 
+  // AI processing
+  const [processing, setProcessing] = useState(false);
+  const [processError, setProcessError] = useState('');
+  const [formattedText, setFormattedText] = useState('');
+  const [showFormatted, setShowFormatted] = useState(false);
+  const [extractedSummary, setExtractedSummary] = useState(null);
+  const [aiResultModalOpen, setAiResultModalOpen] = useState(false);
+
   // Auto-save timer
   const saveTimer = useRef(null);
 
@@ -71,6 +81,7 @@ export default function StoryEditor() {
       const res = await api.get(`/stories/${id}`);
       setStory(res.data);
       setRawText(res.data.content?.raw_text || '');
+      setFormattedText(res.data.content?.formatted_text || '');
       setMetaForm({
         title: res.data.title || '',
         synopsis: res.data.synopsis || '',
@@ -124,6 +135,23 @@ export default function StoryEditor() {
       clearTimeout(saveTimer.current);
     };
   }, []);
+
+  // ── AI: Process with Granite ─────────────────────────────────────────────
+  async function handleProcessWithAI() {
+    setProcessError('');
+    setProcessing(true);
+    try {
+      const res = await api.post(`/stories/${id}/process-text`);
+      setFormattedText(res.data.formattedText);
+      setExtractedSummary(res.data.extracted);
+      setShowFormatted(true);
+      setAiResultModalOpen(true);
+    } catch (err) {
+      setProcessError(err.response?.data?.error || 'AI processing failed. Please try again.');
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   // ── Metadata save ────────────────────────────────────────────────────────
   async function saveMetadata() {
@@ -276,36 +304,77 @@ export default function StoryEditor() {
           >
             {uploading ? <InlineLoading description="Uploading…" /> : 'Upload File'}
           </Button>
+
+          {/* AI Process button */}
+          <Button
+            kind="primary"
+            size="sm"
+            renderIcon={processing ? undefined : MagicWand}
+            onClick={handleProcessWithAI}
+            disabled={processing}
+          >
+            {processing ? <InlineLoading description="Processing…" /> : 'Process with AI'}
+          </Button>
         </div>
       </div>
 
-      {/* Upload error */}
+      {/* Notifications */}
       {uploadError && (
         <InlineNotification
           kind="error"
           title="Upload failed:"
           subtitle={uploadError}
           onCloseButtonClick={() => setUploadError('')}
-          style={{ margin: '0 0 0' }}
+        />
+      )}
+      {processError && (
+        <InlineNotification
+          kind="error"
+          title="AI error:"
+          subtitle={processError}
+          onCloseButtonClick={() => setProcessError('')}
         />
       )}
 
       {/* ── Main layout: editor + bible panel ── */}
       <div style={styles.editorLayout}>
-        {/* Text editor */}
+        {/* Text editor pane */}
         <div style={styles.editorPane}>
           <div style={styles.editorMeta}>
-            <p style={styles.wordCount}>
-              {rawText.trim() ? rawText.trim().split(/\s+/).length.toLocaleString() : 0} words
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={styles.wordCount}>
+                {rawText.trim() ? rawText.trim().split(/\s+/).length.toLocaleString() : 0} words
+              </p>
+              {formattedText && (
+                <Toggle
+                  id="view-toggle"
+                  labelText=""
+                  labelA="Raw"
+                  labelB="AI Formatted"
+                  toggled={showFormatted}
+                  onToggle={val => setShowFormatted(val)}
+                  size="sm"
+                />
+              )}
+            </div>
           </div>
-          <textarea
-            style={styles.textarea}
-            value={rawText}
-            onChange={handleTextChange}
-            placeholder="Start writing your story here, or upload a .txt / .docx file above…"
-            spellCheck
-          />
+
+          {showFormatted && formattedText ? (
+            /* Read-only formatted view */
+            <div style={styles.formattedView}>
+              {formattedText.split('\n').map((para, i) =>
+                para.trim() ? <p key={i} style={styles.formattedPara}>{para}</p> : <br key={i} />
+              )}
+            </div>
+          ) : (
+            <textarea
+              style={styles.textarea}
+              value={rawText}
+              onChange={handleTextChange}
+              placeholder="Start writing your story here, or upload a .txt / .docx file above…"
+              spellCheck
+            />
+          )}
         </div>
 
         {/* Story Bible sidebar */}
@@ -356,6 +425,48 @@ export default function StoryEditor() {
             value={metaForm.synopsis}
             onChange={e => setMetaForm(p => ({ ...p, synopsis: e.target.value }))}
           />
+        </div>
+      </Modal>
+
+      {/* ── AI Result Summary modal ── */}
+      <Modal
+        open={aiResultModalOpen}
+        modalHeading="✦ AI Processing Complete"
+        primaryButtonText="Done"
+        onRequestSubmit={() => setAiResultModalOpen(false)}
+        onRequestClose={() => setAiResultModalOpen(false)}
+        passiveModal
+      >
+        <div style={{ padding: '0.5rem 0', fontSize: '0.9rem', lineHeight: '1.6' }}>
+          <p style={{ marginBottom: '1rem', color: '#525252' }}>
+            Your text has been formatted and your Story Bible has been auto-populated.
+            Use the <strong>AI Formatted</strong> toggle above the editor to view the result.
+          </p>
+          {extractedSummary && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={styles.aiSummaryBlock}>
+                <strong>Characters found:</strong>{' '}
+                {extractedSummary.characters?.length
+                  ? extractedSummary.characters.map(c => c.name).join(', ')
+                  : 'None detected'}
+              </div>
+              <div style={styles.aiSummaryBlock}>
+                <strong>Settings found:</strong>{' '}
+                {extractedSummary.settings?.length
+                  ? extractedSummary.settings.map(s => s.name).join(', ')
+                  : 'None detected'}
+              </div>
+              <div style={styles.aiSummaryBlock}>
+                <strong>Plot points found:</strong>{' '}
+                {extractedSummary.plotPoints?.length
+                  ? extractedSummary.plotPoints.map(p => p.title).join(', ')
+                  : 'None detected'}
+              </div>
+            </div>
+          )}
+          <p style={{ marginTop: '1rem', color: '#8d8d8d', fontSize: '0.8rem' }}>
+            Check the Story Bible panel to review and edit the extracted entries.
+          </p>
         </div>
       </Modal>
     </div>
@@ -460,5 +571,30 @@ const styles = {
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: '0.08em',
+  },
+  formattedView: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '2rem 3rem',
+    maxWidth: '800px',
+    alignSelf: 'center',
+    width: '100%',
+    boxSizing: 'border-box',
+    background: '#fffef5',
+    boxShadow: '0 0 0 1px #e0d9b0',
+  },
+  formattedPara: {
+    fontFamily: 'Georgia, "Times New Roman", serif',
+    fontSize: '1rem',
+    lineHeight: '1.8',
+    color: '#161616',
+    margin: '0 0 1rem',
+  },
+  aiSummaryBlock: {
+    background: '#f4f4f4',
+    padding: '0.6rem 0.9rem',
+    borderRadius: '2px',
+    fontSize: '0.875rem',
+    color: '#393939',
   },
 };

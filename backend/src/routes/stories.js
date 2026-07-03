@@ -4,6 +4,7 @@ const multer = require('multer');
 const mammoth = require('mammoth');
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { formatText, extractBibleData } = require('../services/granite');
 
 // Multer — memory storage, accept .txt and .docx only, max 10 MB
 const upload = multer({
@@ -382,6 +383,111 @@ router.delete('/:id/plot-points/:pointId', authenticate, async (req, res) => {
     await db.query('DELETE FROM plot_points WHERE id=$1 AND story_id=$2', [req.params.pointId, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Failed to delete plot point' }); }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// AI: PROCESS TEXT (format + extract story bible)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/stories/:id/process-text
+ *
+ * 1. Sends raw_text to Granite for formatting → saves to story_content.formatted_text
+ * 2. Sends raw_text to Granite for bible extraction → upserts characters/settings/plot_points
+ *
+ * Returns: { formattedText, extracted: { characters, settings, plotPoints } }
+ */
+router.post('/:id/process-text', authenticate, async (req, res) => {
+  try {
+    const userId = await getUserId(req.user.uid);
+    const story = await assertStoryAccess(req.params.id, userId);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+
+    // Fetch raw text and user's AI criticism level preference
+    const [contentResult, prefResult] = await Promise.all([
+      db.query('SELECT raw_text FROM story_content WHERE story_id = $1', [req.params.id]),
+      db.query(
+        `SELECT p.ai_criticism_level FROM user_preferences p
+         JOIN users u ON u.id = p.user_id
+         WHERE u.firebase_uid = $1`,
+        [req.user.uid]
+      ),
+    ]);
+
+    const rawText = contentResult.rows[0]?.raw_text;
+    if (!rawText || !rawText.trim()) {
+      return res.status(400).json({ error: 'No story text to process. Write or upload content first.' });
+    }
+
+    const criticismLevel = prefResult.rows[0]?.ai_criticism_level || 'moderate';
+
+    // ── Step 1: Format text ───────────────────────────────────────────────
+    const formattedText = await formatText(rawText, criticismLevel);
+
+    await db.query(
+      `INSERT INTO story_content (story_id, formatted_text)
+       VALUES ($1, $2)
+       ON CONFLICT (story_id) DO UPDATE SET formatted_text = $2, last_processed_at = NOW()`,
+      [req.params.id, formattedText]
+    );
+
+    // ── Step 2: Extract bible data ────────────────────────────────────────
+    const extracted = await extractBibleData(rawText);
+
+    // Upsert characters (match on name + story_id)
+    for (const char of extracted.characters) {
+      if (!char.name?.trim()) continue;
+      await db.query(
+        `INSERT INTO characters (story_id, name, traits, role, arc_notes)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (story_id, name) DO UPDATE SET
+           traits    = EXCLUDED.traits,
+           role      = EXCLUDED.role,
+           arc_notes = EXCLUDED.arc_notes`,
+        [req.params.id, char.name, char.traits || null, char.role || null, char.arc_notes || null]
+      );
+    }
+
+    // Upsert settings (match on name + story_id)
+    for (const setting of extracted.settings) {
+      if (!setting.name?.trim()) continue;
+      await db.query(
+        `INSERT INTO settings (story_id, name, description, time_period)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (story_id, name) DO UPDATE SET
+           description = EXCLUDED.description,
+           time_period = EXCLUDED.time_period`,
+        [req.params.id, setting.name, setting.description || null, setting.time_period || null]
+      );
+    }
+
+    // Plot points — insert only new ones (user manages order manually)
+    for (const [i, point] of extracted.plotPoints.entries()) {
+      if (!point.title?.trim()) continue;
+      const exists = await db.query(
+        'SELECT id FROM plot_points WHERE story_id = $1 AND title = $2',
+        [req.params.id, point.title]
+      );
+      if (!exists.rows.length) {
+        await db.query(
+          `INSERT INTO plot_points (story_id, title, description, sequence_order, is_spoiler)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [req.params.id, point.title, point.description || null, i + 1, point.is_spoiler || false]
+        );
+      }
+    }
+
+    res.json({ formattedText, extracted });
+  } catch (err) {
+    console.error('POST /stories/:id/process-text error:', err);
+    if (err.message?.includes('WATSONX_')) {
+      return res.status(503).json({ error: 'AI service not configured. Check WATSONX_API_KEY and WATSONX_PROJECT_ID.' });
+    }
+    if (err.response?.status === 401) {
+      return res.status(503).json({ error: 'Invalid watsonx.ai API key.' });
+    }
+    res.status(500).json({ error: 'AI processing failed. Please try again.' });
+  }
 });
 
 module.exports = router;
