@@ -22,7 +22,7 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api/auth', require('./src/routes/auth'));
-// app.use('/api/stories', require('./src/routes/stories'));
+app.use('/api/stories', require('./src/routes/stories'));
 // app.use('/api/publish', require('./src/routes/publish'));
 // app.use('/api/books', require('./src/routes/books'));
 
