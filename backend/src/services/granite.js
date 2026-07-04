@@ -229,4 +229,96 @@ JSON:`;
   }
 }
 
-module.exports = { formatText, extractBibleData };
+/**
+ * checkContinuity — Analyses story text against the story bible for issues.
+ *
+ * Returns an array of flag objects:
+ *   { type, description, suggestion }
+ *
+ * @param {string} rawText
+ * @param {object} bible  — { characters, settings, plotPoints }
+ * @param {string} criticismLevel — 'light' | 'moderate' | 'detailed'
+ * @returns {Array<{ type: string, description: string, suggestion: string }>}
+ */
+async function checkContinuity(rawText, bible, criticismLevel = 'moderate') {
+  const depthInstruction = {
+    light: 'Report only clear, obvious contradictions. Keep the list short (max 3 issues).',
+    moderate: 'Report notable inconsistencies and 1-2 "show don\'t tell" tips. Aim for 4-7 issues.',
+    detailed: 'Report all inconsistencies, plot holes, character behaviour contradictions, and multiple "show don\'t tell" passages. Be thorough.',
+  }[criticismLevel] || 'Report notable inconsistencies and writing tips.';
+
+  // Summarise the bible compactly to fit in the prompt
+  const bibleSummary = [
+    bible.characters?.length
+      ? 'CHARACTERS:\n' + bible.characters.map(c =>
+          `- ${c.name} (${c.role || 'unknown role'}): ${c.traits || 'no traits'}`
+        ).join('\n')
+      : 'CHARACTERS: none on record',
+    bible.settings?.length
+      ? 'SETTINGS:\n' + bible.settings.map(s =>
+          `- ${s.name}: ${s.description || ''} ${s.time_period ? `(${s.time_period})` : ''}`
+        ).join('\n')
+      : 'SETTINGS: none on record',
+    bible.plotPoints?.length
+      ? 'PLOT POINTS (in order):\n' + bible.plotPoints.map(p =>
+          `- [${p.sequence_order}] ${p.title}: ${p.description || ''}`
+        ).join('\n')
+      : 'PLOT POINTS: none on record',
+  ].join('\n\n');
+
+  // Use only the first ~2000 words of the story to stay within token limits
+  const storyExcerpt = chunkText(rawText, 2000)[0];
+
+  const prompt = `You are a professional story editor performing a continuity and quality review.
+
+${depthInstruction}
+
+Return a JSON array of issues. Each item must have exactly these keys:
+- "type": one of "continuity", "plot_hole", "show_dont_tell", "suggestion"
+- "description": a clear, specific description of the issue (1-3 sentences)
+- "suggestion": a concrete, actionable fix the author can apply (1-2 sentences)
+
+Return ONLY the raw JSON array, no explanation, no markdown fences.
+If no issues are found, return an empty array: []
+
+--- STORY BIBLE ---
+${bibleSummary}
+
+--- STORY EXCERPT ---
+${storyExcerpt}
+--- END ---
+
+JSON array of issues:`;
+
+  let raw = '';
+  try {
+    raw = await generate(prompt, { max_new_tokens: 1200, temperature: 0.2 });
+
+    // Strip accidental markdown fences
+    raw = raw.replace(/```json|```/g, '').trim();
+
+    // Find the outermost JSON array
+    const start = raw.indexOf('[');
+    const end = raw.lastIndexOf(']');
+    if (start === -1 || end === -1) return [];
+
+    const parsed = JSON.parse(raw.slice(start, end + 1));
+    if (!Array.isArray(parsed)) return [];
+
+    // Validate and normalise each entry
+    const validTypes = ['continuity', 'plot_hole', 'show_dont_tell', 'suggestion'];
+    return parsed
+      .filter(item => item && typeof item.description === 'string' && item.description.trim())
+      .map(item => ({
+        type: validTypes.includes(item.type) ? item.type : 'continuity',
+        description: item.description.trim(),
+        suggestion: typeof item.suggestion === 'string' ? item.suggestion.trim() : '',
+      }));
+  } catch (err) {
+    console.error('checkContinuity parse error:', err.message);
+    console.error('Raw model output was:', raw);
+    return [];
+  }
+}
+
+module.exports = { formatText, extractBibleData, checkContinuity };

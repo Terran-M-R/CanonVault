@@ -4,7 +4,7 @@ const multer = require('multer');
 const mammoth = require('mammoth');
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
-const { formatText, extractBibleData } = require('../services/granite');
+const { formatText, extractBibleData, checkContinuity } = require('../services/granite');
 
 // Multer — memory storage, accept .txt and .docx only, max 10 MB
 const upload = multer({
@@ -487,6 +487,130 @@ router.post('/:id/process-text', authenticate, async (req, res) => {
       return res.status(503).json({ error: 'Invalid watsonx.ai API key.' });
     }
     res.status(500).json({ error: 'AI processing failed. Please try again.' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// AI: CONTINUITY CHECKER
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/stories/:id/check-continuity
+ * Runs Granite continuity analysis and saves results as continuity_flags.
+ * Returns all unresolved flags after the run.
+ */
+router.post('/:id/check-continuity', authenticate, async (req, res) => {
+  try {
+    const userId = await getUserId(req.user.uid);
+    const story = await assertStoryAccess(req.params.id, userId);
+    if (!story) return res.status(404).json({ error: 'Story not found' });
+
+    // Gather everything needed for the prompt in parallel
+    const [contentResult, prefResult, charsResult, settingsResult, plotResult] = await Promise.all([
+      db.query('SELECT raw_text FROM story_content WHERE story_id = $1', [req.params.id]),
+      db.query(
+        `SELECT p.ai_criticism_level FROM user_preferences p
+         JOIN users u ON u.id = p.user_id WHERE u.firebase_uid = $1`,
+        [req.user.uid]
+      ),
+      db.query('SELECT name, role, traits FROM characters WHERE story_id = $1', [req.params.id]),
+      db.query('SELECT name, description, time_period FROM settings WHERE story_id = $1', [req.params.id]),
+      db.query('SELECT title, description, sequence_order FROM plot_points WHERE story_id = $1 ORDER BY sequence_order', [req.params.id]),
+    ]);
+
+    const rawText = contentResult.rows[0]?.raw_text;
+    if (!rawText || !rawText.trim()) {
+      return res.status(400).json({ error: 'No story text to check. Write or upload content first.' });
+    }
+
+    const criticismLevel = prefResult.rows[0]?.ai_criticism_level || 'moderate';
+    const bible = {
+      characters: charsResult.rows,
+      settings: settingsResult.rows,
+      plotPoints: plotResult.rows,
+    };
+
+    // Call Granite
+    const flags = await checkContinuity(rawText, bible, criticismLevel);
+
+    // Persist each flag — avoid exact duplicates from repeated runs
+    for (const flag of flags) {
+      const exists = await db.query(
+        'SELECT id FROM continuity_flags WHERE story_id = $1 AND flag_text = $2 AND resolved = FALSE',
+        [req.params.id, flag.description]
+      );
+      if (!exists.rows.length) {
+        await db.query(
+          `INSERT INTO continuity_flags (story_id, flag_text, flag_type, suggestion)
+           VALUES ($1, $2, $3, $4)`,
+          [req.params.id, flag.description, flag.type, flag.suggestion || null]
+        );
+      }
+    }
+
+    // Return all unresolved flags
+    const result = await db.query(
+      `SELECT * FROM continuity_flags
+       WHERE story_id = $1 AND resolved = FALSE
+       ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+
+    res.json({ flags: result.rows, newCount: flags.length });
+  } catch (err) {
+    console.error('POST /stories/:id/check-continuity error:', err);
+    if (err.message?.includes('WATSONX_')) {
+      return res.status(503).json({ error: 'AI service not configured.' });
+    }
+    res.status(500).json({ error: 'Continuity check failed. Please try again.' });
+  }
+});
+
+/**
+ * GET /api/stories/:id/continuity-flags
+ * Returns all continuity flags for a story (both resolved and unresolved).
+ */
+router.get('/:id/continuity-flags', authenticate, async (req, res) => {
+  try {
+    const userId = await getUserId(req.user.uid);
+    if (!await assertStoryAccess(req.params.id, userId)) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
+    const result = await db.query(
+      `SELECT * FROM continuity_flags
+       WHERE story_id = $1
+       ORDER BY resolved ASC, created_at DESC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('GET /stories/:id/continuity-flags error:', err);
+    res.status(500).json({ error: 'Failed to fetch flags' });
+  }
+});
+
+/**
+ * PATCH /api/stories/:id/continuity-flags/:flagId/resolve
+ * Marks a single continuity flag as resolved.
+ */
+router.patch('/:id/continuity-flags/:flagId/resolve', authenticate, async (req, res) => {
+  try {
+    const userId = await getUserId(req.user.uid);
+    if (!await assertStoryAccess(req.params.id, userId)) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
+    const result = await db.query(
+      `UPDATE continuity_flags
+       SET resolved = TRUE
+       WHERE id = $1 AND story_id = $2
+       RETURNING *`,
+      [req.params.flagId, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Flag not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('PATCH /stories/:id/continuity-flags/:flagId/resolve error:', err);
+    res.status(500).json({ error: 'Failed to resolve flag' });
   }
 });
 

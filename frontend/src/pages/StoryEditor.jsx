@@ -27,6 +27,7 @@ import { useAuth } from '../context/AuthContext';
 import { logout } from '../services/auth';
 import api from '../services/api';
 import StoryBiblePanel from '../components/StoryBiblePanel';
+import ContinuityPanel from '../components/ContinuityPanel';
 
 const GENRES = [
   'Fantasy', 'Science Fiction', 'Romance', 'Mystery', 'Thriller',
@@ -67,6 +68,12 @@ export default function StoryEditor() {
   const [showFormatted, setShowFormatted] = useState(false);
   const [extractedSummary, setExtractedSummary] = useState(null);
   const [aiResultModalOpen, setAiResultModalOpen] = useState(false);
+
+  // Continuity checker
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState('');
+  const [sidebarTab, setSidebarTab] = useState('bible'); // 'bible' | 'continuity'
+  const [unresolvedCount, setUnresolvedCount] = useState(0);
 
   // Auto-save timer
   const saveTimer = useRef(null);
@@ -150,6 +157,22 @@ export default function StoryEditor() {
       setProcessError(err.response?.data?.error || 'AI processing failed. Please try again.');
     } finally {
       setProcessing(false);
+    }
+  }
+
+  // ── AI: Check Continuity ─────────────────────────────────────────────────
+  async function handleCheckContinuity() {
+    setCheckError('');
+    setChecking(true);
+    setSidebarTab('continuity');
+    try {
+      const res = await api.post(`/stories/${id}/check-continuity`);
+      setUnresolvedCount(res.data.flags.length);
+    } catch (err) {
+      setCheckError(err.response?.data?.error || 'Continuity check failed. Please try again.');
+      setSidebarTab('bible');
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -311,9 +334,26 @@ export default function StoryEditor() {
             size="sm"
             renderIcon={processing ? undefined : MagicWand}
             onClick={handleProcessWithAI}
-            disabled={processing}
+            disabled={processing || checking}
           >
             {processing ? <InlineLoading description="Processing…" /> : 'Process with AI'}
+          </Button>
+
+          {/* Check Continuity button */}
+          <Button
+            kind="danger--ghost"
+            size="sm"
+            onClick={handleCheckContinuity}
+            disabled={checking || processing}
+          >
+            {checking ? <InlineLoading description="Checking…" /> : (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                Check Continuity
+                {unresolvedCount > 0 && (
+                  <span style={styles.flagBadge}>{unresolvedCount}</span>
+                )}
+              </span>
+            )}
           </Button>
         </div>
       </div>
@@ -333,6 +373,14 @@ export default function StoryEditor() {
           title="AI error:"
           subtitle={processError}
           onCloseButtonClick={() => setProcessError('')}
+        />
+      )}
+      {checkError && (
+        <InlineNotification
+          kind="error"
+          title="Continuity check error:"
+          subtitle={checkError}
+          onCloseButtonClick={() => setCheckError('')}
         />
       )}
 
@@ -377,12 +425,36 @@ export default function StoryEditor() {
           )}
         </div>
 
-        {/* Story Bible sidebar */}
+        {/* Sidebar — tabbed between Story Bible and Continuity */}
         <div style={styles.biblePane}>
-          <div style={styles.bibleHeader}>
-            <span style={styles.bibleTitle}>Story Bible</span>
+          {/* Tab switcher */}
+          <div style={styles.sidebarTabs}>
+            <button
+              style={{ ...styles.sidebarTab, ...(sidebarTab === 'bible' ? styles.sidebarTabActive : {}) }}
+              onClick={() => setSidebarTab('bible')}
+            >
+              Story Bible
+            </button>
+            <button
+              style={{ ...styles.sidebarTab, ...(sidebarTab === 'continuity' ? styles.sidebarTabActive : {}) }}
+              onClick={() => setSidebarTab('continuity')}
+            >
+              Continuity
+              {unresolvedCount > 0 && (
+                <span style={styles.tabBadge}>{unresolvedCount}</span>
+              )}
+            </button>
           </div>
-          <StoryBiblePanel storyId={id} />
+
+          {/* Tab content */}
+          {sidebarTab === 'bible'
+            ? <StoryBiblePanel storyId={id} />
+            : <ContinuityPanel
+                storyId={id}
+                checking={checking}
+                onCheckComplete={count => setUnresolvedCount(count)}
+              />
+          }
         </div>
       </div>
 
@@ -596,5 +668,51 @@ const styles = {
     borderRadius: '2px',
     fontSize: '0.875rem',
     color: '#393939',
+  },
+  sidebarTabs: {
+    display: 'flex',
+    background: '#161616',
+    flexShrink: 0,
+  },
+  sidebarTab: {
+    flex: 1,
+    background: 'none',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    color: '#c6c6c6',
+    fontSize: '0.8rem',
+    fontWeight: '500',
+    padding: '0.6rem 0.5rem',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.4rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+  },
+  sidebarTabActive: {
+    color: '#fff',
+    borderBottom: '2px solid #0f62fe',
+  },
+  tabBadge: {
+    background: '#da1e28',
+    color: '#fff',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    fontWeight: '700',
+    padding: '0.05rem 0.4rem',
+    minWidth: '1.1rem',
+    textAlign: 'center',
+  },
+  flagBadge: {
+    background: '#da1e28',
+    color: '#fff',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    fontWeight: '700',
+    padding: '0.05rem 0.4rem',
+    minWidth: '1.1rem',
+    textAlign: 'center',
   },
 };
