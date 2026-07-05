@@ -115,4 +115,4 @@ The frontend will be available at `http://localhost:5173` and the backend at `ht
 
 ---
 
-*IBM Hackathon July 2025 submission by Terran-M-R*
+*IBM Hackathon July 2026 submission by Terran-M-R*
