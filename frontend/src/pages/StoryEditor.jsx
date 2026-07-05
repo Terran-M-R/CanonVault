@@ -29,6 +29,7 @@ import api from '../services/api';
 import StoryBiblePanel from '../components/StoryBiblePanel';
 import ContinuityPanel from '../components/ContinuityPanel';
 import PublishModal from '../components/PublishModal';
+import CollaboratorsPanel from '../components/CollaboratorsPanel';
 
 const GENRES = [
   'Fantasy', 'Science Fiction', 'Romance', 'Mystery', 'Thriller',
@@ -445,7 +446,7 @@ export default function StoryEditor() {
           )}
         </div>
 
-        {/* Sidebar — tabbed between Story Bible and Continuity */}
+        {/* Sidebar — tabbed: Story Bible / Continuity / Collaborators */}
         <div style={styles.biblePane}>
           {/* Tab switcher */}
           <div style={styles.sidebarTabs}>
@@ -453,7 +454,7 @@ export default function StoryEditor() {
               style={{ ...styles.sidebarTab, ...(sidebarTab === 'bible' ? styles.sidebarTabActive : {}) }}
               onClick={() => setSidebarTab('bible')}
             >
-              Story Bible
+              Bible
             </button>
             <button
               style={{ ...styles.sidebarTab, ...(sidebarTab === 'continuity' ? styles.sidebarTabActive : {}) }}
@@ -464,17 +465,29 @@ export default function StoryEditor() {
                 <span style={styles.tabBadge}>{unresolvedCount}</span>
               )}
             </button>
+            <button
+              style={{ ...styles.sidebarTab, ...(sidebarTab === 'collab' ? styles.sidebarTabActive : {}) }}
+              onClick={() => setSidebarTab('collab')}
+            >
+              Collab
+            </button>
           </div>
 
           {/* Tab content */}
-          {sidebarTab === 'bible'
-            ? <StoryBiblePanel storyId={id} />
-            : <ContinuityPanel
-                storyId={id}
-                checking={checking}
-                onCheckComplete={count => setUnresolvedCount(count)}
-              />
-          }
+          {sidebarTab === 'bible' && <StoryBiblePanel storyId={id} />}
+          {sidebarTab === 'continuity' && (
+            <ContinuityPanel
+              storyId={id}
+              checking={checking}
+              onCheckComplete={count => setUnresolvedCount(count)}
+            />
+          )}
+          {sidebarTab === 'collab' && (
+            <CollaboratorsPanel
+              storyId={id}
+              isOwner={story?.user_id !== undefined && story?.access_role !== 'collaborator'}
+            />
+          )}
         </div>
       </div>
 

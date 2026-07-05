@@ -33,19 +33,27 @@ async function getUserId(firebaseUid) {
   return result.rows[0].id;
 }
 
-// ─── Helper: verify the requesting user owns (or is a collaborator of) a story
-async function assertStoryAccess(storyId, userId, requireEditor = false) {
+// ─── Helper: verify the requesting user owns (or is an accepted collaborator of) a story
+async function assertStoryAccess(storyId, userId, requireOwner = false) {
+  // Look up the requesting user's email (needed for collaborator matching)
+  const userRow = await db.query('SELECT email FROM users WHERE id = $1', [userId]);
+  const userEmail = userRow.rows[0]?.email;
+
   const result = await db.query(
-    `SELECT s.id, s.user_id FROM stories s
+    `SELECT s.id, s.user_id,
+            c.role AS collab_role,
+            c.id   AS collab_id
+     FROM stories s
      LEFT JOIN collaborators c
-       ON c.story_id = s.id AND c.user_id = $2 AND c.invite_status = 'accepted'
-     WHERE s.id = $1 AND (s.user_id = $2 OR c.id IS NOT NULL)`,
-    [storyId, userId]
+       ON c.story_id = s.id
+      AND c.email = $3
+      AND c.invite_status = 'accepted'
+     WHERE s.id = $1
+       AND (s.user_id = $2 OR c.id IS NOT NULL)`,
+    [storyId, userId, userEmail || '']
   );
   if (!result.rows.length) return false;
-  if (requireEditor && result.rows[0].user_id !== userId) {
-    // collaborator — check role later when collaboration is built
-  }
+  if (requireOwner && result.rows[0].user_id !== userId) return false;
   return result.rows[0];
 }
 
@@ -60,11 +68,18 @@ async function assertStoryAccess(storyId, userId, requireEditor = false) {
 router.get('/', authenticate, async (req, res) => {
   try {
     const userId = await getUserId(req.user.uid);
+    // Include stories where user is the owner OR an accepted collaborator
     const result = await db.query(
-      `SELECT id, title, synopsis, genre, status, created_at, updated_at
-       FROM stories
-       WHERE user_id = $1
-       ORDER BY updated_at DESC`,
+      `SELECT DISTINCT s.id, s.title, s.synopsis, s.genre, s.status,
+              s.created_at, s.updated_at,
+              CASE WHEN s.user_id = $1 THEN 'owner' ELSE 'collaborator' END AS access_role
+       FROM stories s
+       LEFT JOIN collaborators c
+         ON c.story_id = s.id
+        AND c.email = (SELECT email FROM users WHERE id = $1)
+        AND c.invite_status = 'accepted'
+       WHERE s.user_id = $1 OR c.id IS NOT NULL
+       ORDER BY s.updated_at DESC`,
       [userId]
     );
     res.json(result.rows);
@@ -611,6 +626,114 @@ router.patch('/:id/continuity-flags/:flagId/resolve', authenticate, async (req, 
   } catch (err) {
     console.error('PATCH /stories/:id/continuity-flags/:flagId/resolve error:', err);
     res.status(500).json({ error: 'Failed to resolve flag' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// COLLABORATORS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/stories/:id/collaborators
+ * Returns all collaborators for a story (owner only).
+ */
+router.get('/:id/collaborators', authenticate, async (req, res) => {
+  try {
+    const userId = await getUserId(req.user.uid);
+    const story = await assertStoryAccess(req.params.id, userId, true); // owner only
+    if (!story) return res.status(404).json({ error: 'Story not found or access denied' });
+
+    const result = await db.query(
+      `SELECT id, email, role, invite_status, created_at
+       FROM collaborators
+       WHERE story_id = $1
+       ORDER BY created_at`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('GET /collaborators error:', err);
+    res.status(500).json({ error: 'Failed to fetch collaborators' });
+  }
+});
+
+/**
+ * POST /api/stories/:id/collaborators
+ * Invites a collaborator by email. Owner only.
+ * Body: { email, role }  — role is 'editor' | 'viewer'
+ */
+router.post('/:id/collaborators', authenticate, async (req, res) => {
+  const { email, role } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  if (!['editor', 'viewer'].includes(role)) {
+    return res.status(400).json({ error: 'Role must be editor or viewer' });
+  }
+
+  try {
+    const userId = await getUserId(req.user.uid);
+    const story = await assertStoryAccess(req.params.id, userId, true); // owner only
+    if (!story) return res.status(404).json({ error: 'Story not found or access denied' });
+
+    // Prevent owner from inviting themselves
+    const ownerEmail = await db.query('SELECT email FROM users WHERE id = $1', [userId]);
+    if (ownerEmail.rows[0]?.email?.toLowerCase() === email.toLowerCase()) {
+      return res.status(400).json({ error: 'You cannot invite yourself' });
+    }
+
+    // Upsert invite — if already exists, update role
+    const result = await db.query(
+      `INSERT INTO collaborators (story_id, email, role, invite_status)
+       VALUES ($1, $2, $3, 'pending')
+       ON CONFLICT (story_id, email) DO UPDATE SET
+         role = EXCLUDED.role,
+         invite_status = CASE
+           WHEN collaborators.invite_status = 'accepted' THEN 'accepted'
+           ELSE 'pending'
+         END
+       RETURNING *`,
+      [req.params.id, email.toLowerCase(), role]
+    );
+
+    // If this email already has an account, auto-accept immediately
+    const existingUser = await db.query(
+      'SELECT id FROM users WHERE LOWER(email) = $1',
+      [email.toLowerCase()]
+    );
+    if (existingUser.rows.length) {
+      await db.query(
+        `UPDATE collaborators SET invite_status = 'accepted'
+         WHERE story_id = $1 AND email = $2`,
+        [req.params.id, email.toLowerCase()]
+      );
+      result.rows[0].invite_status = 'accepted';
+    }
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('POST /collaborators error:', err);
+    res.status(500).json({ error: 'Failed to add collaborator' });
+  }
+});
+
+/**
+ * DELETE /api/stories/:id/collaborators/:collaboratorId
+ * Removes a collaborator. Owner only.
+ */
+router.delete('/:id/collaborators/:collaboratorId', authenticate, async (req, res) => {
+  try {
+    const userId = await getUserId(req.user.uid);
+    const story = await assertStoryAccess(req.params.id, userId, true); // owner only
+    if (!story) return res.status(404).json({ error: 'Story not found or access denied' });
+
+    const result = await db.query(
+      'DELETE FROM collaborators WHERE id = $1 AND story_id = $2 RETURNING id',
+      [req.params.collaboratorId, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Collaborator not found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /collaborators error:', err);
+    res.status(500).json({ error: 'Failed to remove collaborator' });
   }
 });
 

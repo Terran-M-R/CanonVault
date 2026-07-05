@@ -136,9 +136,14 @@ export default function Dashboard() {
               >
                 <div style={styles.cardHeader}>
                   <h3 style={styles.cardTitle}>{story.title}</h3>
-                  <Tag type={STATUS_COLORS[story.status] || 'gray'} size="sm">
-                    {story.status}
-                  </Tag>
+                  <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {story.access_role === 'collaborator' && (
+                      <Tag type="purple" size="sm">Shared</Tag>
+                    )}
+                    <Tag type={STATUS_COLORS[story.status] || 'gray'} size="sm">
+                      {story.status}
+                    </Tag>
+                  </div>
                 </div>
                 {story.genre && (
                   <p style={styles.genre}>{story.genre}</p>

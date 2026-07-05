@@ -27,6 +27,13 @@ router.post('/login', authenticate, async (req, res) => {
     );
     const user = userResult.rows[0];
 
+    // Auto-accept any pending collaboration invites for this email
+    await db.query(
+      `UPDATE collaborators SET invite_status = 'accepted'
+       WHERE email = $1 AND invite_status = 'pending'`,
+      [email]
+    );
+
     // Check if onboarding survey has been completed
     const prefResult = await db.query(
       'SELECT id FROM user_preferences WHERE user_id = $1',
