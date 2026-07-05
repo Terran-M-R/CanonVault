@@ -2,7 +2,7 @@
 
 > A centralized creative writing management platform with AI-powered story bible, continuity checking, and public publishing.
 
-Built for the **IBM Hackathon July 2025 — Reimagine Creative Industries with AI**.
+Built for the **IBM Hackathon July 2026 — Reimagine Creative Industries with AI**.
 
 ---
 
