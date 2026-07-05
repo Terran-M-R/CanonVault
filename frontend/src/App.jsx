@@ -7,14 +7,18 @@ import Register from './pages/Register';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import StoryEditor from './pages/StoryEditor';
+import Browse from './pages/Browse';
+import BookProfile from './pages/BookProfile';
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
-        {/* Public routes */}
+        {/* Public routes — no login required */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/browse" element={<Browse />} />
+        <Route path="/book/:id" element={<BookProfile />} />
 
         {/* Onboarding — accessible when logged in but survey not done */}
         <Route path="/onboarding" element={<Onboarding />} />
@@ -38,8 +42,8 @@ function App() {
         />
 
         {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<Navigate to="/browse" replace />} />
+        <Route path="*" element={<Navigate to="/browse" replace />} />
       </Routes>
     </AuthProvider>
   );

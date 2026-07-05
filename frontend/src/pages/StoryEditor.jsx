@@ -28,6 +28,7 @@ import { logout } from '../services/auth';
 import api from '../services/api';
 import StoryBiblePanel from '../components/StoryBiblePanel';
 import ContinuityPanel from '../components/ContinuityPanel';
+import PublishModal from '../components/PublishModal';
 
 const GENRES = [
   'Fantasy', 'Science Fiction', 'Romance', 'Mystery', 'Thriller',
@@ -75,6 +76,10 @@ export default function StoryEditor() {
   const [sidebarTab, setSidebarTab] = useState('bible'); // 'bible' | 'continuity'
   const [unresolvedCount, setUnresolvedCount] = useState(0);
 
+  // Publishing
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [existingBook, setExistingBook] = useState(null);
+
   // Auto-save timer
   const saveTimer = useRef(null);
 
@@ -95,6 +100,12 @@ export default function StoryEditor() {
         genre: res.data.genre || '',
         status: res.data.status || 'draft',
       });
+      // Check if already published
+      try {
+        const pubRes = await api.get(`/books?storyId=${id}`);
+        const match = pubRes.data.find(b => String(b.story_id) === String(id));
+        if (match) setExistingBook(match);
+      } catch (_) { /* not published yet, that's fine */ }
     } catch (err) {
       if (err.response?.status === 404) setNotFound(true);
       console.error('Failed to load story:', err);
@@ -355,6 +366,15 @@ export default function StoryEditor() {
               </span>
             )}
           </Button>
+
+          {/* Publish button */}
+          <Button
+            kind="tertiary"
+            size="sm"
+            onClick={() => setPublishModalOpen(true)}
+          >
+            {existingBook ? 'Manage Publish' : '🌐 Publish'}
+          </Button>
         </div>
       </div>
 
@@ -499,6 +519,24 @@ export default function StoryEditor() {
           />
         </div>
       </Modal>
+
+      {/* ── Publish modal ── */}
+      {story && (
+        <PublishModal
+          open={publishModalOpen}
+          story={story}
+          existingBook={existingBook}
+          onClose={() => setPublishModalOpen(false)}
+          onPublished={(book) => {
+            setExistingBook(book);
+            setStory(prev => ({ ...prev, status: book?.is_wip ? 'wip' : 'published' }));
+          }}
+          onUnpublished={() => {
+            setExistingBook(null);
+            setStory(prev => ({ ...prev, status: 'draft' }));
+          }}
+        />
+      )}
 
       {/* ── AI Result Summary modal ── */}
       <Modal
