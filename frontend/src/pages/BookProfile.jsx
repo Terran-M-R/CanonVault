@@ -166,7 +166,7 @@ export default function BookProfile() {
 
       {/* Footer */}
       <footer style={styles.footer}>
-        <p>CanonVault · IBM Hackathon July 2025</p>
+        <p>CanonVault · IBM Hackathon July 2026</p>
       </footer>
     </div>
   );
