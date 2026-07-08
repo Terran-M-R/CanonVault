@@ -77,6 +77,7 @@ canonvault/
 - IBM watsonx.ai API key
 - Hugging Face API token
 
+<!-- Potentially get rid of this line so people don't clone my repo with my own username
 ### 1. Clone the repository
 ```bash
 git clone https://github.com/Terran-M-R/CanonVault.git
@@ -104,7 +105,7 @@ npm run dev
 ```
 
 The frontend will be available at `http://localhost:5173` and the backend at `http://localhost:3001`.
-
+--->
 ---
 
 ## Hackathon Notes
