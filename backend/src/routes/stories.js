@@ -34,7 +34,10 @@ async function getUserId(firebaseUid) {
 }
 
 // ─── Helper: verify the requesting user owns (or is an accepted collaborator of) a story
-async function assertStoryAccess(storyId, userId, requireOwner = false) {
+//
+// requireOwner: if true, rejects collaborators entirely (owner-only actions).
+// requiredRole: if 'editor', rejects collaborators with role 'viewer' on write actions.
+async function assertStoryAccess(storyId, userId, requireOwner = false, requiredRole = null) {
   // Look up the requesting user's email (needed for collaborator matching)
   const userRow = await db.query('SELECT email FROM users WHERE id = $1', [userId]);
   const userEmail = userRow.rows[0]?.email;
@@ -53,8 +56,13 @@ async function assertStoryAccess(storyId, userId, requireOwner = false) {
     [storyId, userId, userEmail || '']
   );
   if (!result.rows.length) return false;
-  if (requireOwner && result.rows[0].user_id !== userId) return false;
-  return result.rows[0];
+  const row = result.rows[0];
+  // Owner-only check (e.g. delete story, update metadata)
+  if (requireOwner && row.user_id !== userId) return false;
+  // Editor-only check (e.g. write content, run AI, manage bible)
+  // Owners always pass; collaborators must have role 'editor', not 'viewer'.
+  if (requiredRole === 'editor' && row.user_id !== userId && row.collab_role !== 'editor') return false;
+  return row;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -136,13 +144,13 @@ router.get('/:id', authenticate, async (req, res) => {
 
 /**
  * PUT /api/stories/:id
- * Updates story metadata (title, synopsis, genre, status).
+ * Updates story metadata (title, synopsis, genre, status). Owner only.
  */
 router.put('/:id', authenticate, async (req, res) => {
   const { title, synopsis, genre, status } = req.body;
   try {
     const userId = await getUserId(req.user.uid);
-    const story = await assertStoryAccess(req.params.id, userId);
+    const story = await assertStoryAccess(req.params.id, userId, true);
     if (!story) return res.status(404).json({ error: 'Story not found' });
 
     const result = await db.query(
@@ -184,13 +192,13 @@ router.delete('/:id', authenticate, async (req, res) => {
 
 /**
  * PUT /api/stories/:id/content
- * Saves (auto-saves) the raw text of the story editor.
+ * Saves (auto-saves) the raw text of the story editor. Requires editor role.
  */
 router.put('/:id/content', authenticate, async (req, res) => {
   const { raw_text } = req.body;
   try {
     const userId = await getUserId(req.user.uid);
-    const story = await assertStoryAccess(req.params.id, userId);
+    const story = await assertStoryAccess(req.params.id, userId, false, 'editor');
     if (!story) return res.status(404).json({ error: 'Story not found' });
 
     await db.query(
@@ -219,7 +227,7 @@ router.post('/:id/upload', authenticate, upload.single('file'), async (req, res)
 
   try {
     const userId = await getUserId(req.user.uid);
-    const story = await assertStoryAccess(req.params.id, userId);
+    const story = await assertStoryAccess(req.params.id, userId, false, 'editor');
     if (!story) return res.status(404).json({ error: 'Story not found' });
 
     let text = '';
@@ -264,7 +272,7 @@ router.post('/:id/characters', authenticate, async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
       'INSERT INTO characters (story_id, name, traits, role, arc_notes) VALUES ($1,$2,$3,$4,$5) RETURNING *',
       [req.params.id, name, traits || null, role || null, arc_notes || null]
@@ -277,7 +285,7 @@ router.put('/:id/characters/:charId', authenticate, async (req, res) => {
   const { name, traits, role, arc_notes } = req.body;
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
       `UPDATE characters SET name=COALESCE($1,name), traits=COALESCE($2,traits), role=COALESCE($3,role), arc_notes=COALESCE($4,arc_notes)
        WHERE id=$5 AND story_id=$6 RETURNING *`,
@@ -291,7 +299,7 @@ router.put('/:id/characters/:charId', authenticate, async (req, res) => {
 router.delete('/:id/characters/:charId', authenticate, async (req, res) => {
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     await db.query('DELETE FROM characters WHERE id=$1 AND story_id=$2', [req.params.charId, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Failed to delete character' }); }
@@ -315,7 +323,7 @@ router.post('/:id/settings', authenticate, async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
       'INSERT INTO settings (story_id, name, description, time_period) VALUES ($1,$2,$3,$4) RETURNING *',
       [req.params.id, name, description || null, time_period || null]
@@ -328,7 +336,7 @@ router.put('/:id/settings/:settingId', authenticate, async (req, res) => {
   const { name, description, time_period } = req.body;
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
       `UPDATE settings SET name=COALESCE($1,name), description=COALESCE($2,description), time_period=COALESCE($3,time_period)
        WHERE id=$4 AND story_id=$5 RETURNING *`,
@@ -342,7 +350,7 @@ router.put('/:id/settings/:settingId', authenticate, async (req, res) => {
 router.delete('/:id/settings/:settingId', authenticate, async (req, res) => {
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     await db.query('DELETE FROM settings WHERE id=$1 AND story_id=$2', [req.params.settingId, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Failed to delete setting' }); }
@@ -366,7 +374,7 @@ router.post('/:id/plot-points', authenticate, async (req, res) => {
   if (!title) return res.status(400).json({ error: 'Title is required' });
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
       'INSERT INTO plot_points (story_id, title, description, sequence_order, is_spoiler) VALUES ($1,$2,$3,$4,$5) RETURNING *',
       [req.params.id, title, description || null, sequence_order ?? 0, is_spoiler ?? false]
@@ -379,7 +387,7 @@ router.put('/:id/plot-points/:pointId', authenticate, async (req, res) => {
   const { title, description, sequence_order, is_spoiler } = req.body;
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
       `UPDATE plot_points SET title=COALESCE($1,title), description=COALESCE($2,description),
        sequence_order=COALESCE($3,sequence_order), is_spoiler=COALESCE($4,is_spoiler)
@@ -394,7 +402,7 @@ router.put('/:id/plot-points/:pointId', authenticate, async (req, res) => {
 router.delete('/:id/plot-points/:pointId', authenticate, async (req, res) => {
   try {
     const userId = await getUserId(req.user.uid);
-    if (!await assertStoryAccess(req.params.id, userId)) return res.status(404).json({ error: 'Story not found' });
+    if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     await db.query('DELETE FROM plot_points WHERE id=$1 AND story_id=$2', [req.params.pointId, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Failed to delete plot point' }); }
@@ -415,7 +423,7 @@ router.delete('/:id/plot-points/:pointId', authenticate, async (req, res) => {
 router.post('/:id/process-text', authenticate, async (req, res) => {
   try {
     const userId = await getUserId(req.user.uid);
-    const story = await assertStoryAccess(req.params.id, userId);
+    const story = await assertStoryAccess(req.params.id, userId, false, 'editor');
     if (!story) return res.status(404).json({ error: 'Story not found' });
 
     // Fetch raw text and user's AI criticism level preference
@@ -432,6 +440,9 @@ router.post('/:id/process-text', authenticate, async (req, res) => {
     const rawText = contentResult.rows[0]?.raw_text;
     if (!rawText || !rawText.trim()) {
       return res.status(400).json({ error: 'No story text to process. Write or upload content first.' });
+    }
+    if (rawText.length > 200_000) {
+      return res.status(400).json({ error: 'Story text exceeds the 200,000 character AI processing limit. Please split into chapters and process each separately.' });
     }
 
     const criticismLevel = prefResult.rows[0]?.ai_criticism_level || 'moderate';
@@ -517,7 +528,7 @@ router.post('/:id/process-text', authenticate, async (req, res) => {
 router.post('/:id/check-continuity', authenticate, async (req, res) => {
   try {
     const userId = await getUserId(req.user.uid);
-    const story = await assertStoryAccess(req.params.id, userId);
+    const story = await assertStoryAccess(req.params.id, userId, false, 'editor');
     if (!story) return res.status(404).json({ error: 'Story not found' });
 
     // Gather everything needed for the prompt in parallel
@@ -536,6 +547,9 @@ router.post('/:id/check-continuity', authenticate, async (req, res) => {
     const rawText = contentResult.rows[0]?.raw_text;
     if (!rawText || !rawText.trim()) {
       return res.status(400).json({ error: 'No story text to check. Write or upload content first.' });
+    }
+    if (rawText.length > 200_000) {
+      return res.status(400).json({ error: 'Story text exceeds the 200,000 character AI processing limit. Please split into chapters and process each separately.' });
     }
 
     const criticismLevel = prefResult.rows[0]?.ai_criticism_level || 'moderate';
