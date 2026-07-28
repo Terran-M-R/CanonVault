@@ -90,38 +90,51 @@ router.post('/', authenticate, async (req, res) => {
       [is_wip ? 'wip' : 'published', storyId]
     );
 
-    // Generate storyboard images only on first publish (expensive operation)
-    let images = [];
-    if (isFirstPublish) {
-      const plotPoints = await db.query(
-        'SELECT id, title, description, is_spoiler FROM plot_points WHERE story_id = $1 ORDER BY sequence_order',
-        [storyId]
-      );
-
-      if (plotPoints.rows.length > 0) {
-        images = await generateStoryboardImages(plotPoints.rows, genre);
-
-        // Save generated images to the database
-        for (const img of images) {
-          await db.query(
-            `INSERT INTO storyboard_images (story_id, image_url, prompt_used, plot_point_ref)
-             VALUES ($1, $2, $3, $4)`,
-            [storyId, img.imageUrl, img.prompt, img.plotPointId]
-          );
-        }
-      }
-    }
+    // Generate storyboard images on first publish, or when regenerate=true is passed.
+    // Image generation is intentionally run AFTER the response is sent so a slow or
+    // failing HF call never blocks or crashes the publish. The client polls/reloads
+    // the book profile to see images once they appear.
+    const { regenerate_images } = req.body;
+    const shouldGenerateImages = isFirstPublish || regenerate_images;
 
     res.status(isFirstPublish ? 201 : 200).json({
       book,
-      imagesGenerated: images.length,
+      generatingImages: shouldGenerateImages,
     });
+
+    // Fire-and-forget image generation after response is flushed
+    if (shouldGenerateImages) {
+      (async () => {
+        try {
+          const plotPoints = await db.query(
+            'SELECT id, title, description, is_spoiler FROM plot_points WHERE story_id = $1 ORDER BY sequence_order',
+            [storyId]
+          );
+
+          if (plotPoints.rows.length === 0) return;
+
+          // If regenerating, delete existing images first
+          if (regenerate_images && !isFirstPublish) {
+            await db.query('DELETE FROM storyboard_images WHERE story_id = $1', [storyId]);
+          }
+
+          const images = await generateStoryboardImages(plotPoints.rows, genre);
+
+          for (const img of images) {
+            await db.query(
+              `INSERT INTO storyboard_images (story_id, image_url, prompt_used, plot_point_ref)
+               VALUES ($1, $2, $3, $4)`,
+              [storyId, img.imageUrl, img.prompt, img.plotPointId]
+            );
+          }
+          console.log(`Storyboard: ${images.length} image(s) generated for story ${storyId}`);
+        } catch (imgErr) {
+          console.error(`Storyboard generation failed for story ${storyId}:`, imgErr.message);
+        }
+      })();
+    }
   } catch (err) {
     console.error('POST /publish error:', err);
-    if (err.message?.includes('HUGGINGFACE_TOKEN')) {
-      // Don't fail the whole publish if images can't be generated
-      return res.status(200).json({ book: null, imagesGenerated: 0, warning: 'Published without images — check HUGGINGFACE_TOKEN.' });
-    }
     res.status(500).json({ error: 'Failed to publish story' });
   }
 });

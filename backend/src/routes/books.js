@@ -89,9 +89,14 @@ router.get('/:id', async (req, res) => {
 
     const book = bookResult.rows[0];
 
-    // Fetch storyboard images for this story
+    // Fetch storyboard images, joining the plot point title/description for display
     const imagesResult = await db.query(
-      'SELECT id, image_url, prompt_used, plot_point_ref FROM storyboard_images WHERE story_id = $1 ORDER BY created_at',
+      `SELECT si.id, si.image_url, si.prompt_used, si.plot_point_ref,
+              pp.title AS plot_point_title, pp.description AS plot_point_description
+       FROM storyboard_images si
+       LEFT JOIN plot_points pp ON pp.id = si.plot_point_ref
+       WHERE si.story_id = $1
+       ORDER BY si.created_at`,
       [book.story_id]
     );
 

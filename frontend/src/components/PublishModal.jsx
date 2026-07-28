@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Modal,
   TextInput,
@@ -6,7 +6,7 @@ import {
   Select,
   SelectItem,
   Toggle,
-  InlineLoading,
+  Checkbox,
   InlineNotification,
 } from '@carbon/react';
 import api from '../services/api';
@@ -15,6 +15,11 @@ const AUDIENCES = ['Adult', 'Young Adult', 'Middle Grade', 'Children', 'All Ages
 
 export default function PublishModal({ open, story, onClose, onPublished, onUnpublished, existingBook }) {
   const isUpdate = !!existingBook;
+  const isMounted = useRef(true);
+  React.useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   const [form, setForm] = useState({
     hook:             existingBook?.hook            || story?.synopsis || '',
@@ -23,10 +28,10 @@ export default function PublishModal({ open, story, onClose, onPublished, onUnpu
     external_link:    existingBook?.external_link   || '',
     is_wip:           existingBook != null ? existingBook.is_wip : true,
   });
+  const [regenerateImages, setRegenerateImages] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [unpublishing, setUnpublishing] = useState(false);
   const [error, setError] = useState('');
-  const [warning, setWarning] = useState('');
 
   async function handlePublish() {
     if (!form.hook?.trim()) {
@@ -36,14 +41,30 @@ export default function PublishModal({ open, story, onClose, onPublished, onUnpu
     setError('');
     setPublishing(true);
     try {
-      const res = await api.post('/publish', { storyId: story.id, ...form });
-      if (res.data.warning) setWarning(res.data.warning);
-      onPublished(res.data.book);
-      if (!res.data.warning) onClose();
+      const res = await api.post('/publish', {
+        storyId: story.id,
+        ...form,
+        regenerate_images: !isUpdate || regenerateImages,
+      });
+      if (res.data.book) {
+        const generatingImages = res.data.generatingImages === true;
+        // Store a flag in sessionStorage so the StoryEditor can show the
+        // correct banner after the page reloads.
+        sessionStorage.setItem(
+          'publishSuccess',
+          JSON.stringify({ bookId: res.data.book.id, generatingImages })
+        );
+        // Reload the page — this cleanly remounts the component tree and
+        // avoids the Carbon Modal unmount crash that causes the white screen.
+        window.location.reload();
+      } else {
+        onClose();
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to publish. Please try again.');
-    } finally {
-      setPublishing(false);
+      if (isMounted.current) {
+        setError(err.response?.data?.error || 'Failed to publish. Please try again.');
+        setPublishing(false);
+      }
     }
   }
 
@@ -54,9 +75,10 @@ export default function PublishModal({ open, story, onClose, onPublished, onUnpu
       onUnpublished();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to unpublish.');
-    } finally {
-      setUnpublishing(false);
+      if (isMounted.current) {
+        setError(err.response?.data?.error || 'Failed to unpublish.');
+        setUnpublishing(false);
+      }
     }
   }
 
@@ -77,14 +99,6 @@ export default function PublishModal({ open, story, onClose, onPublished, onUnpu
             title="Error:"
             subtitle={error}
             onCloseButtonClick={() => setError('')}
-          />
-        )}
-        {warning && (
-          <InlineNotification
-            kind="warning"
-            title="Published with a note:"
-            subtitle={warning}
-            onCloseButtonClick={() => setWarning('')}
           />
         )}
 
@@ -135,11 +149,23 @@ export default function PublishModal({ open, story, onClose, onPublished, onUnpu
           onToggle={val => setForm(p => ({ ...p, is_wip: val }))}
         />
 
-        <p style={{ fontSize: '0.8rem', color: '#6f6f6f', margin: 0 }}>
-          {isUpdate
-            ? 'Updating will refresh your public profile. Storyboard images are only generated on first publish.'
-            : 'On first publish, storyboard images will be generated from your non-spoiler plot points. This may take a moment.'}
-        </p>
+        {isUpdate ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <Checkbox
+              id="regenerate-images"
+              labelText="Regenerate storyboard images from current plot points"
+              checked={regenerateImages}
+              onChange={(_, { checked }) => setRegenerateImages(checked)}
+            />
+            <p style={{ fontSize: '0.8rem', color: '#6f6f6f', margin: 0 }}>
+              Check this to regenerate AI storyboard images. This may take up to a minute.
+            </p>
+          </div>
+        ) : (
+          <p style={{ fontSize: '0.8rem', color: '#6f6f6f', margin: 0 }}>
+            On first publish, storyboard images will be generated from your non-spoiler plot points. This may take a moment.
+          </p>
+        )}
 
         {/* Unpublish option for existing books */}
         {isUpdate && (

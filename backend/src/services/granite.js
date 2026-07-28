@@ -6,19 +6,20 @@
  * so the model returns consistent, structured output.
  *
  * Environment variables required:
- *   WATSONX_API_KEY   — IBM Cloud IAM API key
- *   WATSONX_PROJECT_ID — watsonx.ai project ID
- *   WATSONX_URL       — regional endpoint, e.g. https://us-south.ml.cloud.ibm.com
+ *   WATSONX_API_KEY    — IBM Cloud IAM API key
+ *   WATSONX_SPACE_ID   — watsonx.ai Deployment Space ID
+ *                        (used instead of a Studio Project — see README for context)
+ *   WATSONX_URL        — regional endpoint, e.g. https://us-south.ml.cloud.ibm.com
  */
 
 const axios = require('axios');
 
 const WATSONX_URL = process.env.WATSONX_URL || 'https://us-south.ml.cloud.ibm.com';
-const PROJECT_ID = process.env.WATSONX_PROJECT_ID;
+const SPACE_ID = process.env.WATSONX_SPACE_ID;
 const API_KEY = process.env.WATSONX_API_KEY;
 
-// Model to use — granite-13b-instruct-v2 is the flagship instruction-tuned model
-const MODEL_ID = 'ibm/granite-13b-instruct-v2';
+// Model to use — granite-3-8b-instruct is the current recommended instruction-tuned model
+const MODEL_ID = 'ibm/granite-3-8b-instruct';
 
 // IBM Cloud IAM token cache
 let iamToken = null;
@@ -55,8 +56,8 @@ async function getIAMToken() {
  * @returns {string}          - Generated text (trimmed)
  */
 async function generate(prompt, params = {}) {
-  if (!API_KEY || !PROJECT_ID) {
-    throw new Error('WATSONX_API_KEY and WATSONX_PROJECT_ID must be set in environment variables');
+  if (!API_KEY || !SPACE_ID) {
+    throw new Error('WATSONX_API_KEY and WATSONX_SPACE_ID must be set in environment variables');
   }
 
   const token = await getIAMToken();
@@ -64,7 +65,7 @@ async function generate(prompt, params = {}) {
   const body = {
     model_id: MODEL_ID,
     input: prompt,
-    project_id: PROJECT_ID,
+    space_id: SPACE_ID,
     parameters: {
       decoding_method: 'greedy',
       max_new_tokens: params.max_new_tokens || 2048,
@@ -76,7 +77,7 @@ async function generate(prompt, params = {}) {
   };
 
   const response = await axios.post(
-    `${WATSONX_URL}/ml/v1/text/generation?version=2023-05-29`,
+    `${WATSONX_URL}/ml/v1/text/generation?version=2024-05-31`,
     body,
     {
       headers: {
@@ -94,10 +95,11 @@ async function generate(prompt, params = {}) {
 
 /**
  * Splits text into chunks that fit within the model's context window.
- * Granite-13b has a 4096-token context; we conservatively allow ~2500
- * words per chunk (roughly 3300 tokens) to leave room for the prompt.
+ * granite-3-8b-instruct has a 4096-token context; we allow ~1200 words
+ * per chunk (roughly 1600 tokens) to leave ample room for the prompt
+ * and the generated output, preventing mid-sentence cutoffs.
  */
-function chunkText(text, maxWords = 2500) {
+function chunkText(text, maxWords = 1200) {
   const words = text.split(/\s+/);
   const chunks = [];
   for (let i = 0; i < words.length; i += maxWords) {
@@ -168,16 +170,26 @@ Formatted text:`;
  * @returns {{ characters: Array, settings: Array, plotPoints: Array }}
  */
 async function extractBibleData(rawText) {
-  // For extraction we only need the first ~2000 words to identify entities
-  // (extracting from the full text risks exceeding token limits on the JSON output)
-  const sample = chunkText(rawText, 2000)[0];
+  // Sample 1200 words spread across the full text (400 from start, middle, end).
+  // This gives broader character/setting coverage than reading only chapter 1,
+  // while staying within the model's token budget (avoids mid-JSON truncation).
+  const words = rawText.split(/\s+/);
+  const total = words.length;
+  const sliceSize = 400;
+  const mid = Math.floor(total / 2);
+  const near_end = Math.max(total - sliceSize, mid + sliceSize);
+  const sample = [
+    words.slice(0, sliceSize),
+    words.slice(mid, mid + sliceSize),
+    words.slice(near_end, near_end + sliceSize),
+  ].map(s => s.join(' ')).join('\n\n...\n\n');
 
   const prompt = `You are a literary analysis assistant. Read the following story excerpt and extract structured data.
 
 Return a JSON object with exactly this structure (no extra keys, no markdown fences):
 {
   "characters": [
-    { "name": "string", "role": "string", "traits": "string", "arc_notes": "string" }
+    { "name": "string", "role": "string", "traits": "string", "arc_notes": "string", "description": "string" }
   ],
   "settings": [
     { "name": "string", "description": "string", "time_period": "string" }
@@ -188,11 +200,13 @@ Return a JSON object with exactly this structure (no extra keys, no markdown fen
 }
 
 Rules:
-- Extract up to 10 characters, 5 settings, and 8 plot points
+- Extract up to 8 characters, 5 settings, and 6 plot points
 - For "traits" write a short comma-separated list (e.g. "brave, stubborn, loyal")
 - For "arc_notes" write one sentence describing the character's journey if discernible
+- For "description" write a brief physical appearance description (hair, eyes, build); use "" if not mentioned
 - For "time_period" write the historical era or "contemporary" if unclear
 - Mark a plot point as is_spoiler: true only if it reveals a major twist or ending
+- Keep all string values concise — one sentence maximum per field
 - If a field cannot be determined, use an empty string ""
 - Return ONLY the raw JSON object, no explanation, no markdown
 
@@ -204,22 +218,31 @@ JSON:`;
 
   let raw = '';
   try {
-    raw = await generate(prompt, { max_new_tokens: 1500, temperature: 0.1 });
+    raw = await generate(prompt, { max_new_tokens: 2048, temperature: 0.1 });
 
     // Strip any accidental markdown fences the model may add
     raw = raw.replace(/```json|```/g, '').trim();
 
     // Find the outermost JSON object
     const start = raw.indexOf('{');
-    const end = raw.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('No JSON object found in response');
+    let end = raw.lastIndexOf('}');
+
+    if (start === -1) throw new Error('No JSON object found in response');
+
+    // If the response was truncated (no closing brace), attempt partial recovery:
+    // close any open structures so JSON.parse has a chance to salvage completed entries
+    if (end === -1 || end < start) {
+      console.warn('extractBibleData: response truncated — attempting partial recovery');
+      raw = raw + ']}]}';
+      end = raw.lastIndexOf('}');
+    }
 
     const parsed = JSON.parse(raw.slice(start, end + 1));
 
     return {
       characters: Array.isArray(parsed.characters) ? parsed.characters : [],
-      settings: Array.isArray(parsed.settings) ? parsed.settings : [],
-      plotPoints: Array.isArray(parsed.plotPoints) ? parsed.plotPoints : [],
+      settings:   Array.isArray(parsed.settings)   ? parsed.settings   : [],
+      plotPoints: Array.isArray(parsed.plotPoints)  ? parsed.plotPoints : [],
     };
   } catch (err) {
     console.error('extractBibleData parse error:', err.message);

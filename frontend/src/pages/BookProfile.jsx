@@ -9,10 +9,44 @@ import {
   Tag,
   InlineLoading,
 } from '@carbon/react';
-import { ArrowLeft, Launch, Login } from '@carbon/icons-react';
+import { ArrowLeft, Launch, Login, Close } from '@carbon/icons-react';
 import api from '../services/api';
+import { CanonVaultWordmark } from '../components/CanonVaultLogo';
 
 const PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='225' viewBox='0 0 400 225'%3E%3Crect width='400' height='225' fill='%23e0e0e0'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%236f6f6f'%3EGenerating image…%3C/text%3E%3C/svg%3E";
+
+// ── Lightbox overlay shown when an image is clicked/hovered ──────────────────
+function Lightbox({ img, index, onClose }) {
+  // Close on Escape key
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const label = img.plot_point_title || `Scene ${index + 1}`;
+  const desc  = img.plot_point_description || null;
+
+  return (
+    <div style={lbStyles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label={label}>
+      <div style={lbStyles.card} onClick={e => e.stopPropagation()}>
+        <button style={lbStyles.closeBtn} onClick={onClose} aria-label="Close">
+          <Close size={20} />
+        </button>
+        <img
+          src={img.image_url || PLACEHOLDER}
+          alt={label}
+          style={lbStyles.img}
+          onError={e => { e.target.src = PLACEHOLDER; }}
+        />
+        <div style={lbStyles.caption}>
+          <strong style={lbStyles.captionTitle}>{label}</strong>
+          {desc && <p style={lbStyles.captionDesc}>{desc}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function BookProfile() {
   const { id } = useParams();
@@ -20,6 +54,7 @@ export default function BookProfile() {
   const [book, setBook] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [lightboxImg, setLightboxImg] = useState(null); // { img, index }
 
   useEffect(() => {
     async function load() {
@@ -58,7 +93,7 @@ export default function BookProfile() {
   return (
     <div style={styles.page}>
       {/* Header */}
-      <Header aria-label="CanonVault">
+      <Header aria-label="CanonVault" style={{ backgroundColor: '#001261' }}>
         <HeaderGlobalAction
           aria-label="Back to browse"
           tooltipAlignment="start"
@@ -66,7 +101,9 @@ export default function BookProfile() {
         >
           <ArrowLeft size={20} />
         </HeaderGlobalAction>
-        <HeaderName prefix="">CanonVault</HeaderName>
+        <HeaderName prefix="" style={{ padding: '0 1rem' }}>
+          <img src="/logo-wordmark.png.png" alt="CanonVault" style={{ height: '36px', width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
+        </HeaderName>
         <HeaderGlobalBar>
           <HeaderGlobalAction
             aria-label="Sign in"
@@ -133,22 +170,40 @@ export default function BookProfile() {
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>Storyboard</h2>
             <p style={styles.sectionSub}>
-              AI-generated scenes from key moments in the story
+              AI-generated scenes from key moments in the story — hover to enlarge
             </p>
             <div style={styles.storyboard}>
-              {book.storyboard.map((img, i) => (
-                <div key={img.id} style={styles.storyboardItem}>
-                  <img
-                    src={img.image_url || PLACEHOLDER}
-                    alt={`Scene ${i + 1}`}
-                    style={styles.storyboardImg}
-                    onError={e => { e.target.src = PLACEHOLDER; }}
-                  />
-                  {img.prompt_used && (
-                    <p style={styles.imgPrompt}>Scene {i + 1}</p>
-                  )}
-                </div>
-              ))}
+              {book.storyboard.map((img, i) => {
+                const label = img.plot_point_title || `Scene ${i + 1}`;
+                const desc  = img.plot_point_description || null;
+                return (
+                  <div
+                    key={img.id}
+                    style={styles.storyboardItem}
+                    onClick={() => setLightboxImg({ img, index: i })}
+                    title="Click to enlarge"
+                    className="storyboard-card"
+                  >
+                    <div style={styles.imgWrapper}>
+                      <img
+                        src={img.image_url || PLACEHOLDER}
+                        alt={label}
+                        style={styles.storyboardImg}
+                        onError={e => { e.target.src = PLACEHOLDER; }}
+                      />
+                      <div style={styles.imgOverlay}>
+                        <span style={styles.overlayZoom}>🔍 Click to enlarge</span>
+                      </div>
+                    </div>
+                    <div style={styles.imgCaption}>
+                      <strong style={styles.imgCaptionTitle}>{label}</strong>
+                      {desc && (
+                        <p style={styles.imgCaptionDesc}>{desc}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -168,6 +223,22 @@ export default function BookProfile() {
       <footer style={styles.footer}>
         <p>CanonVault · IBM Hackathon July 2026</p>
       </footer>
+
+      {/* Lightbox */}
+      {lightboxImg && (
+        <Lightbox
+          img={lightboxImg.img}
+          index={lightboxImg.index}
+          onClose={() => setLightboxImg(null)}
+        />
+      )}
+
+      {/* Hover styles injected globally */}
+      <style>{`
+        .storyboard-card { cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .storyboard-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+        .storyboard-card:hover .img-overlay { opacity: 1; }
+      `}</style>
     </div>
   );
 }
@@ -189,7 +260,7 @@ const styles = {
   content: {
     maxWidth: '860px',
     margin: '0 auto',
-    padding: '5rem 2rem 2rem',
+    padding: '4.5rem 2rem 2rem',
     flex: 1,
     width: '100%',
     boxSizing: 'border-box',
@@ -274,22 +345,61 @@ const styles = {
     gap: '1rem',
   },
   storyboardItem: {
-    borderRadius: '2px',
+    borderRadius: '4px',
     overflow: 'hidden',
     background: '#e0e0e0',
+    border: '1px solid #e0e0e0',
+  },
+  imgWrapper: {
+    position: 'relative',
+    overflow: 'hidden',
   },
   storyboardImg: {
     width: '100%',
     aspectRatio: '16/9',
     objectFit: 'cover',
     display: 'block',
+    transition: 'transform 0.2s ease',
   },
-  imgPrompt: {
-    fontSize: '0.75rem',
-    color: '#6f6f6f',
-    padding: '0.4rem 0.6rem',
-    margin: 0,
+  imgOverlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0,
+    transition: 'opacity 0.2s ease',
+    className: 'img-overlay',
+  },
+  overlayZoom: {
+    color: '#fff',
+    fontSize: '0.8rem',
+    fontWeight: '500',
+    letterSpacing: '0.02em',
+  },
+  imgCaption: {
+    padding: '0.5rem 0.65rem 0.6rem',
     background: '#f4f4f4',
+    borderTop: '1px solid #e0e0e0',
+  },
+  imgCaptionTitle: {
+    display: 'block',
+    fontSize: '0.8rem',
+    fontWeight: '600',
+    color: '#161616',
+    marginBottom: '0.2rem',
+  },
+  imgCaptionDesc: {
+    fontSize: '0.75rem',
+    color: '#525252',
+    margin: 0,
+    lineHeight: '1.45',
+    // Clamp to 2 lines so it doesn't take over the card
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
   },
   cta: {
     display: 'flex',
@@ -306,5 +416,68 @@ const styles = {
     color: '#8d8d8d',
     borderTop: '1px solid #e0e0e0',
     background: '#fff',
+  },
+};
+
+// ── Lightbox styles ───────────────────────────────────────────────────────────
+const lbStyles = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.78)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9000,
+    padding: '1.5rem',
+  },
+  card: {
+    position: 'relative',
+    background: '#fff',
+    borderRadius: '4px',
+    maxWidth: '780px',
+    width: '100%',
+    overflow: 'hidden',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '0.5rem',
+    right: '0.5rem',
+    background: 'rgba(0,0,0,0.55)',
+    border: 'none',
+    borderRadius: '50%',
+    width: '2rem',
+    height: '2rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#fff',
+    zIndex: 1,
+  },
+  img: {
+    width: '100%',
+    maxHeight: '70vh',
+    objectFit: 'contain',
+    display: 'block',
+    background: '#161616',
+  },
+  caption: {
+    padding: '1rem 1.25rem',
+    borderTop: '1px solid #e0e0e0',
+  },
+  captionTitle: {
+    display: 'block',
+    fontSize: '0.95rem',
+    fontWeight: '600',
+    color: '#161616',
+    marginBottom: '0.35rem',
+  },
+  captionDesc: {
+    fontSize: '0.875rem',
+    color: '#393939',
+    margin: 0,
+    lineHeight: '1.6',
   },
 };

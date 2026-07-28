@@ -10,6 +10,7 @@ import {
 } from '@carbon/react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { CanonVaultWordmark } from '../components/CanonVaultLogo';
 
 const STEPS = [
   {
@@ -96,14 +97,16 @@ export default function Onboarding() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
+      <div style={styles.card} className="cv-auth-card">
         <div style={styles.header}>
-          <h1 style={styles.title}>Welcome to CanonVault</h1>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
+            <img src="/logo-wordmark.png.png" alt="CanonVault" style={{ height: '80px', width: 'auto', display: 'block', margin: '0 auto' }} />
+          </div>
           <p style={styles.subtitle}>Let's set up your writing profile</p>
         </div>
 
         {/* Progress indicator */}
-        <ProgressIndicator currentIndex={step} style={{ marginBottom: '2rem' }}>
+        <ProgressIndicator currentIndex={step} style={{ marginBottom: '2rem' }} className="cv-dark-form">
           {STEPS.map((s) => (
             <ProgressStep key={s.field} label={s.label} />
           ))}
@@ -120,7 +123,7 @@ export default function Onboarding() {
         )}
 
         {/* Current step question */}
-        <div style={styles.question}>
+        <div style={styles.question} className="cv-dark-form">
           <p style={styles.questionText}>{current.question}</p>
           <RadioButtonGroup
             legendText=""
@@ -174,27 +177,22 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f4f4f4',
+    backgroundColor: '#011261',
   },
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#011261',
     padding: '2.5rem',
     width: '100%',
     maxWidth: '520px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: '4px',
   },
   header: {
     marginBottom: '1.5rem',
     textAlign: 'center',
   },
-  title: {
-    fontSize: '1.75rem',
-    fontWeight: '600',
-    color: '#161616',
-    marginBottom: '0.25rem',
-  },
   subtitle: {
-    color: '#525252',
+    color: 'rgba(255,255,255,0.7)',
     fontSize: '0.875rem',
   },
   question: {
@@ -203,7 +201,7 @@ const styles = {
   questionText: {
     fontSize: '1rem',
     fontWeight: '500',
-    color: '#161616',
+    color: '#ffffff',
     marginBottom: '1rem',
   },
   buttons: {

@@ -19,16 +19,27 @@ import api from '../services/api';
 // ─── Reusable inline edit card ────────────────────────────────────────────────
 function BibleCard({ item, fields, onSave, onDelete }) {
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [form, setForm] = useState({ ...item });
 
   function startEdit() {
     setForm({ ...item });
+    setSaveError('');
     setEditing(true);
   }
 
   async function save() {
-    await onSave(item.id, form);
-    setEditing(false);
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onSave(item.id, form);
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err.response?.data?.error || 'Save failed. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -36,17 +47,28 @@ function BibleCard({ item, fields, onSave, onDelete }) {
       {editing ? (
         <div style={cardStyles.editBody}>
           {fields.map(f => (
-            f.multiline
-              ? <TextArea key={f.key} labelText={f.label} rows={3}
-                  value={form[f.key] || ''}
-                  onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} />
-              : <TextInput key={f.key} labelText={f.label}
-                  value={form[f.key] || ''}
-                  onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} />
+            f.type === 'boolean'
+              ? <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                  <input type="checkbox" checked={!!form[f.key]}
+                    onChange={e => setForm(p => ({ ...p, [f.key]: e.target.checked }))} />
+                  {f.label}
+                </label>
+              : f.multiline
+                ? <TextArea key={f.key} labelText={f.label} rows={3}
+                    value={form[f.key] || ''}
+                    onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} />
+                : <TextInput key={f.key} labelText={f.label}
+                    value={form[f.key] || ''}
+                    onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} />
           ))}
+          {saveError && (
+            <p style={{ color: '#da1e28', fontSize: '0.8rem', margin: 0 }}>{saveError}</p>
+          )}
           <div style={cardStyles.editActions}>
-            <Button size="sm" renderIcon={Checkmark} onClick={save}>Save</Button>
-            <Button size="sm" kind="ghost" renderIcon={Close} onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="sm" renderIcon={Checkmark} onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+            <Button size="sm" kind="ghost" renderIcon={Close} onClick={() => setEditing(false)} disabled={saving}>Cancel</Button>
           </div>
         </div>
       ) : (
@@ -194,6 +216,7 @@ export default function StoryBiblePanel({ storyId }) {
   const characterFields = [
     { key: 'name', label: 'Name' },
     { key: 'role', label: 'Role' },
+    { key: 'description', label: 'Appearance Description', multiline: true },
     { key: 'traits', label: 'Traits', multiline: true },
     { key: 'arc_notes', label: 'Arc Notes', multiline: true },
   ];

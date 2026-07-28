@@ -6,6 +6,9 @@ import App from './App';
 // IBM Carbon pre-built CSS (no Sass processor required)
 import '@carbon/styles/css/styles.css';
 
+// CanonVault global overrides (header height, logo sizing, etc.)
+import './index.css';
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>

@@ -16,6 +16,7 @@ import {
   Tile,
 } from '@carbon/react';
 import { Logout, Add, Book } from '@carbon/icons-react';
+import { CanonVaultWordmark } from '../components/CanonVaultLogo';
 import { useAuth } from '../context/AuthContext';
 import { logout } from '../services/auth';
 import api from '../services/api';
@@ -91,8 +92,10 @@ export default function Dashboard() {
   return (
     <div>
       {/* Top navigation */}
-      <Header aria-label="CanonVault">
-        <HeaderName prefix="">CanonVault</HeaderName>
+      <Header aria-label="CanonVault" style={{ backgroundColor: '#001261' }}>
+        <HeaderName prefix="" style={{ padding: '0 1rem' }}>
+          <img src="/logo-wordmark.png.png" alt="CanonVault" style={{ height: '36px', width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
+        </HeaderName>
         <HeaderGlobalBar>
           <HeaderGlobalAction
             aria-label="Sign out"
@@ -212,7 +215,7 @@ export default function Dashboard() {
 
 const styles = {
   content: {
-    padding: '6rem 2rem 2rem',
+    padding: '5rem 2rem 2rem',
     maxWidth: '1100px',
     margin: '0 auto',
   },

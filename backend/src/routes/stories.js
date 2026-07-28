@@ -268,28 +268,29 @@ router.get('/:id/characters', authenticate, async (req, res) => {
 });
 
 router.post('/:id/characters', authenticate, async (req, res) => {
-  const { name, traits, role, arc_notes } = req.body;
+  const { name, traits, role, arc_notes, description } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
     const userId = await getUserId(req.user.uid);
     if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
-      'INSERT INTO characters (story_id, name, traits, role, arc_notes) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [req.params.id, name, traits || null, role || null, arc_notes || null]
+      'INSERT INTO characters (story_id, name, traits, role, arc_notes, description) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [req.params.id, name, traits || null, role || null, arc_notes || null, description || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: 'Failed to create character' }); }
 });
 
 router.put('/:id/characters/:charId', authenticate, async (req, res) => {
-  const { name, traits, role, arc_notes } = req.body;
+  const { name, traits, role, arc_notes, description } = req.body;
   try {
     const userId = await getUserId(req.user.uid);
     if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
-      `UPDATE characters SET name=COALESCE($1,name), traits=COALESCE($2,traits), role=COALESCE($3,role), arc_notes=COALESCE($4,arc_notes)
-       WHERE id=$5 AND story_id=$6 RETURNING *`,
-      [name, traits, role, arc_notes, req.params.charId, req.params.id]
+      `UPDATE characters SET name=COALESCE($1,name), traits=COALESCE($2,traits), role=COALESCE($3,role),
+       arc_notes=COALESCE($4,arc_notes), description=COALESCE($5,description)
+       WHERE id=$6 AND story_id=$7 RETURNING *`,
+      [name, traits, role, arc_notes, description, req.params.charId, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Character not found' });
     res.json(result.rows[0]);
@@ -389,10 +390,13 @@ router.put('/:id/plot-points/:pointId', authenticate, async (req, res) => {
     const userId = await getUserId(req.user.uid);
     if (!await assertStoryAccess(req.params.id, userId, false, 'editor')) return res.status(404).json({ error: 'Story not found' });
     const result = await db.query(
-      `UPDATE plot_points SET title=COALESCE($1,title), description=COALESCE($2,description),
-       sequence_order=COALESCE($3,sequence_order), is_spoiler=COALESCE($4,is_spoiler)
+      `UPDATE plot_points SET
+         title          = COALESCE($1, title),
+         description    = COALESCE($2, description),
+         sequence_order = COALESCE($3, sequence_order),
+         is_spoiler     = CASE WHEN $4::boolean IS NOT NULL THEN $4::boolean ELSE is_spoiler END
        WHERE id=$5 AND story_id=$6 RETURNING *`,
-      [title, description, sequence_order, is_spoiler, req.params.pointId, req.params.id]
+      [title ?? null, description ?? null, sequence_order ?? null, is_spoiler ?? null, req.params.pointId, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Plot point not found' });
     res.json(result.rows[0]);
@@ -464,13 +468,14 @@ router.post('/:id/process-text', authenticate, async (req, res) => {
     for (const char of extracted.characters) {
       if (!char.name?.trim()) continue;
       await db.query(
-        `INSERT INTO characters (story_id, name, traits, role, arc_notes)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO characters (story_id, name, traits, role, arc_notes, description)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (story_id, name) DO UPDATE SET
-           traits    = EXCLUDED.traits,
-           role      = EXCLUDED.role,
-           arc_notes = EXCLUDED.arc_notes`,
-        [req.params.id, char.name, char.traits || null, char.role || null, char.arc_notes || null]
+           traits      = EXCLUDED.traits,
+           role        = EXCLUDED.role,
+           arc_notes   = EXCLUDED.arc_notes,
+           description = COALESCE(EXCLUDED.description, characters.description)`,
+        [req.params.id, char.name, char.traits || null, char.role || null, char.arc_notes || null, char.description || null]
       );
     }
 

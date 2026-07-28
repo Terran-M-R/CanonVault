@@ -30,6 +30,7 @@ import StoryBiblePanel from '../components/StoryBiblePanel';
 import ContinuityPanel from '../components/ContinuityPanel';
 import PublishModal from '../components/PublishModal';
 import CollaboratorsPanel from '../components/CollaboratorsPanel';
+import { CanonVaultWordmark } from '../components/CanonVaultLogo';
 
 const GENRES = [
   'Fantasy', 'Science Fiction', 'Romance', 'Mystery', 'Thriller',
@@ -39,6 +40,16 @@ const GENRES = [
 const STATUSES = ['draft', 'wip', 'published'];
 
 const AUTO_SAVE_DELAY = 2500; // ms after last keystroke
+
+// ── AI processing steps shown in the progress popup ────────────────────────
+const AI_STEPS = [
+  { label: 'Reading your manuscript…',         duration: 2200 },
+  { label: 'Analysing characters…',             duration: 2400 },
+  { label: 'Assessing the plot…',               duration: 2400 },
+  { label: 'Checking settings & world-building…', duration: 2200 },
+  { label: 'Formatting prose & dialogue…',      duration: 2400 },
+  { label: 'Populating your Story Bible…',      duration: 2000 },
+];
 
 export default function StoryEditor() {
   const { id } = useParams();
@@ -65,11 +76,17 @@ export default function StoryEditor() {
 
   // AI processing
   const [processing, setProcessing] = useState(false);
+  const [aiStep, setAiStep] = useState(0);          // index into AI_STEPS while processing
   const [processError, setProcessError] = useState('');
   const [formattedText, setFormattedText] = useState('');
   const [showFormatted, setShowFormatted] = useState(false);
   const [extractedSummary, setExtractedSummary] = useState(null);
   const [aiResultModalOpen, setAiResultModalOpen] = useState(false);
+  const aiStepTimer = useRef(null);
+
+  // Published book link banner
+  const [publishedBookId, setPublishedBookId] = useState(null);
+  const [imagesGenerating, setImagesGenerating] = useState(false);
 
   // Continuity checker
   const [checking, setChecking] = useState(false);
@@ -87,6 +104,20 @@ export default function StoryEditor() {
   // ── Load story on mount ──────────────────────────────────────────────────
   useEffect(() => {
     loadStory();
+
+    // After a publish/update the page reloads. Pick up the success flag from
+    // sessionStorage and show the banner — then clear it so it only shows once.
+    const raw = sessionStorage.getItem('publishSuccess');
+    if (raw) {
+      sessionStorage.removeItem('publishSuccess');
+      try {
+        const { bookId, generatingImages } = JSON.parse(raw);
+        if (bookId) {
+          setPublishedBookId(bookId);
+          if (generatingImages) setImagesGenerating(true);
+        }
+      } catch (_) { /* malformed entry — ignore */ }
+    }
   }, [id]);
 
   async function loadStory() {
@@ -158,14 +189,33 @@ export default function StoryEditor() {
   // ── AI: Process with Granite ─────────────────────────────────────────────
   async function handleProcessWithAI() {
     setProcessError('');
+    setAiStep(0);
     setProcessing(true);
+
+    // Cycle through the progress steps while the real request runs in parallel
+    let stepIndex = 0;
+    function scheduleNextStep() {
+      const delay = AI_STEPS[stepIndex]?.duration ?? 2000;
+      aiStepTimer.current = setTimeout(() => {
+        stepIndex += 1;
+        if (stepIndex < AI_STEPS.length) {
+          setAiStep(stepIndex);
+          scheduleNextStep();
+        }
+        // When all steps shown, stay on last step until API responds
+      }, delay);
+    }
+    scheduleNextStep();
+
     try {
       const res = await api.post(`/stories/${id}/process-text`);
+      clearTimeout(aiStepTimer.current);
       setFormattedText(res.data.formattedText);
       setExtractedSummary(res.data.extracted);
       setShowFormatted(true);
       setAiResultModalOpen(true);
     } catch (err) {
+      clearTimeout(aiStepTimer.current);
       setProcessError(err.response?.data?.error || 'AI processing failed. Please try again.');
     } finally {
       setProcessing(false);
@@ -269,24 +319,26 @@ export default function StoryEditor() {
   return (
     <div style={styles.page}>
       {/* ── Header ── */}
-      <Header aria-label="CanonVault">
+      <Header aria-label="CanonVault" style={{ backgroundColor: '#011261' }}>
         <HeaderGlobalAction
           aria-label="Back to dashboard"
           tooltipAlignment="start"
           onClick={() => navigate('/dashboard')}
+          style={{ color: '#ffffff' }}
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={20} style={{ color: '#ffffff', fill: '#ffffff' }} />
         </HeaderGlobalAction>
-        <HeaderName prefix="">
-          {story?.title || 'Story Editor'}
+        <HeaderName prefix="" style={{ padding: '0 1rem' }}>
+          <img src="/logo-wordmark.png.png" alt="CanonVault" style={{ height: '36px', width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
         </HeaderName>
         <HeaderGlobalBar>
           <HeaderGlobalAction
             aria-label="Sign out"
             tooltipAlignment="end"
             onClick={handleLogout}
+            style={{ color: '#ffffff' }}
           >
-            <Logout size={20} />
+            <Logout size={20} style={{ color: '#ffffff', fill: '#ffffff' }} />
           </HeaderGlobalAction>
         </HeaderGlobalBar>
       </Header>
@@ -330,15 +382,17 @@ export default function StoryEditor() {
             style={{ display: 'none' }}
             onChange={handleFileUpload}
           />
-          <Button
-            kind="secondary"
-            size="sm"
-            renderIcon={uploading ? undefined : Upload}
-            onClick={() => fileInputRef.current?.click()}
+          <button
+            className="cv-upload-btn"
             disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            style={styles.uploadBtn}
           >
-            {uploading ? <InlineLoading description="Uploading…" /> : 'Upload File'}
-          </Button>
+            {uploading
+              ? <InlineLoading description="Uploading…" />
+              : <><Upload size={16} style={{ marginRight: '0.35rem', verticalAlign: 'middle' }} />Upload File</>
+            }
+          </button>
 
           {/* AI Process button */}
           <Button
@@ -368,16 +422,54 @@ export default function StoryEditor() {
             )}
           </Button>
 
+          {/* View public page button — only shown when published */}
+          {existingBook?.id && (
+            <Button
+              kind="ghost"
+              size="sm"
+              onClick={() => window.open(`/book/${existingBook.id}`, '_blank')}
+            >
+              View Public Page ↗
+            </Button>
+          )}
+
           {/* Publish button */}
-          <Button
-            kind="tertiary"
-            size="sm"
+          <button
+            className="cv-publish-btn"
+            style={styles.publishBtn}
             onClick={() => setPublishModalOpen(true)}
           >
             {existingBook ? 'Manage Publish' : '🌐 Publish'}
-          </Button>
+          </button>
         </div>
       </div>
+
+      {/* Published banner */}
+      {publishedBookId && (
+        <InlineNotification
+          kind="success"
+          title={imagesGenerating ? 'Published — storyboard images generating…' : 'Story published!'}
+          subtitle={
+            <span>
+              Your story is live.{' '}
+              <a
+                href={`/book/${publishedBookId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#0f62fe', fontWeight: '600' }}
+              >
+                View Public Page →
+              </a>
+              {imagesGenerating && (
+                <span style={{ display: 'block', fontSize: '0.85rem', color: '#393939', marginTop: '0.4rem', lineHeight: '1.5' }}>
+                  🖼 <strong>Storyboard images are being generated in the background.</strong> Click <em>View Public Page</em> above, then wait about 1 minute and refresh to see your storyboard.
+                </span>
+              )}
+            </span>
+          }
+          onCloseButtonClick={() => { setPublishedBookId(null); setImagesGenerating(false); }}
+        />
+      )}
 
       {/* Notifications */}
       {uploadError && (
@@ -449,29 +541,32 @@ export default function StoryEditor() {
         {/* Sidebar — tabbed: Story Bible / Continuity / Collaborators */}
         <div style={styles.biblePane}>
           {/* Tab switcher */}
-          <div style={styles.sidebarTabs}>
-            <button
-              style={{ ...styles.sidebarTab, ...(sidebarTab === 'bible' ? styles.sidebarTabActive : {}) }}
-              onClick={() => setSidebarTab('bible')}
-            >
-              Bible
-            </button>
-            <button
-              style={{ ...styles.sidebarTab, ...(sidebarTab === 'continuity' ? styles.sidebarTabActive : {}) }}
-              onClick={() => setSidebarTab('continuity')}
-            >
-              Continuity
-              {unresolvedCount > 0 && (
-                <span style={styles.tabBadge}>{unresolvedCount}</span>
-              )}
-            </button>
-            <button
-              style={{ ...styles.sidebarTab, ...(sidebarTab === 'collab' ? styles.sidebarTabActive : {}) }}
-              onClick={() => setSidebarTab('collab')}
-            >
-              Collab
-            </button>
-          </div>
+            <div style={styles.sidebarTabs}>
+              <button
+                className={`cv-sidebar-tab${sidebarTab === 'bible' ? ' cv-sidebar-tab--active' : ''}`}
+                style={styles.sidebarTab}
+                onClick={() => setSidebarTab('bible')}
+              >
+                Bible
+              </button>
+              <button
+                className={`cv-sidebar-tab${sidebarTab === 'continuity' ? ' cv-sidebar-tab--active' : ''}`}
+                style={styles.sidebarTab}
+                onClick={() => setSidebarTab('continuity')}
+              >
+                Continuity
+                {unresolvedCount > 0 && (
+                  <span style={styles.tabBadge}>{unresolvedCount}</span>
+                )}
+              </button>
+              <button
+                className={`cv-sidebar-tab${sidebarTab === 'collab' ? ' cv-sidebar-tab--active' : ''}`}
+                style={styles.sidebarTab}
+                onClick={() => setSidebarTab('collab')}
+              >
+                Collab
+              </button>
+            </div>
 
           {/* Tab content */}
           {sidebarTab === 'bible' && <StoryBiblePanel storyId={id} />}
@@ -540,15 +635,47 @@ export default function StoryEditor() {
           story={story}
           existingBook={existingBook}
           onClose={() => setPublishModalOpen(false)}
-          onPublished={(book) => {
+          onPublished={(book, generatingImages) => {
+            if (!book?.id) return;
             setExistingBook(book);
-            setStory(prev => ({ ...prev, status: book?.is_wip ? 'wip' : 'published' }));
+            setStory(prev => ({ ...prev, status: book.is_wip ? 'wip' : 'published' }));
+            setPublishedBookId(book.id);
+            if (generatingImages) setImagesGenerating(true);
           }}
           onUnpublished={() => {
             setExistingBook(null);
             setStory(prev => ({ ...prev, status: 'draft' }));
           }}
         />
+      )}
+
+      {/* ── AI Processing progress overlay ── */}
+      {processing && (
+        <div style={styles.aiOverlay}>
+          <div style={styles.aiPopup}>
+            <div style={styles.aiPopupHeader}>
+              <MagicWand size={20} style={{ color: '#011261', flexShrink: 0 }} />
+              <span style={styles.aiPopupTitle}>Processing with IBM Granite AI</span>
+            </div>
+            <div style={styles.aiStepsList}>
+              {AI_STEPS.map((s, i) => {
+                const done    = i < aiStep;
+                const current = i === aiStep;
+                return (
+                  <div key={i} style={{ ...styles.aiStepRow, opacity: i > aiStep ? 0.35 : 1 }}>
+                    <span style={styles.aiStepIcon}>
+                      {done    ? '✓' : current ? '⟳' : '○'}
+                    </span>
+                    <span style={{ ...styles.aiStepLabel, fontWeight: current ? '600' : '400', color: current ? '#011261' : done ? '#24a148' : '#525252' }}>
+                      {s.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={styles.aiPopupHint}>This usually takes 20–40 seconds…</p>
+          </div>
+        </div>
       )}
 
       {/* ── AI Result Summary modal ── */}
@@ -611,7 +738,7 @@ const styles = {
     height: '100vh',
   },
   toolbar: {
-    marginTop: '48px', // Carbon Header height
+    marginTop: '64px', // Carbon Header height (overridden to 64px)
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -720,9 +847,37 @@ const styles = {
     fontSize: '0.875rem',
     color: '#393939',
   },
+  uploadBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 1rem',
+    height: '32px',
+    fontSize: '0.875rem',
+    fontWeight: '400',
+    cursor: 'pointer',
+    border: '1px solid rgba(1,18,97,0.55)',
+    borderRadius: '2px',
+    background: 'transparent',
+    color: '#011261',
+    transition: 'background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease',
+  },
+  publishBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 1rem',
+    height: '32px',
+    fontSize: '0.875rem',
+    fontWeight: '400',
+    cursor: 'pointer',
+    border: '1.5px solid #011261',
+    borderRadius: '2px',
+    background: 'transparent',
+    color: '#011261',
+    transition: 'background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease',
+  },
   sidebarTabs: {
     display: 'flex',
-    background: '#161616',
+    background: '#011261',
     flexShrink: 0,
   },
   sidebarTab: {
@@ -730,7 +885,7 @@ const styles = {
     background: 'none',
     border: 'none',
     borderBottom: '2px solid transparent',
-    color: '#c6c6c6',
+    color: '#ffffff',
     fontSize: '0.8rem',
     fontWeight: '500',
     padding: '0.6rem 0.5rem',
@@ -741,10 +896,64 @@ const styles = {
     gap: '0.4rem',
     textTransform: 'uppercase',
     letterSpacing: '0.06em',
+    transition: 'background 0.25s ease, box-shadow 0.25s ease, color 0.25s ease',
   },
-  sidebarTabActive: {
-    color: '#fff',
-    borderBottom: '2px solid #0f62fe',
+  aiOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.45)',
+    zIndex: 9999,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiPopup: {
+    background: '#fff',
+    borderRadius: '6px',
+    padding: '2rem 2.25rem',
+    width: '360px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1.25rem',
+  },
+  aiPopupHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.65rem',
+  },
+  aiPopupTitle: {
+    fontSize: '1rem',
+    fontWeight: '600',
+    color: '#011261',
+  },
+  aiStepsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.7rem',
+  },
+  aiStepRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.65rem',
+    transition: 'opacity 0.4s ease',
+  },
+  aiStepIcon: {
+    width: '1.1rem',
+    textAlign: 'center',
+    fontSize: '0.85rem',
+    flexShrink: 0,
+  },
+  aiStepLabel: {
+    fontSize: '0.875rem',
+    lineHeight: '1.4',
+    transition: 'color 0.3s ease, font-weight 0.3s ease',
+  },
+  aiPopupHint: {
+    fontSize: '0.78rem',
+    color: '#8d8d8d',
+    margin: 0,
+    textAlign: 'center',
   },
   tabBadge: {
     background: '#da1e28',

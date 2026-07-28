@@ -8,6 +8,7 @@ import {
   Stack,
 } from '@carbon/react';
 import { loginWithEmail, loginWithGoogle } from '../services/auth';
+import { CanonVaultWordmark } from '../components/CanonVaultLogo';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -45,10 +46,13 @@ export default function Login() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
-        {/* Logo / Title */}
+      {/* cv-auth-card enables the hover glow via index.css */}
+      <div style={styles.card} className="cv-auth-card">
+        {/* Logo */}
         <div style={styles.header}>
-          <h1 style={styles.title}>CanonVault</h1>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
+            <img src="/logo-wordmark.png.png" alt="CanonVault" style={{ height: '80px', width: 'auto', display: 'block', margin: '0 auto' }} />
+          </div>
           <p style={styles.subtitle}>Sign in to your account</p>
         </div>
 
@@ -62,7 +66,8 @@ export default function Login() {
           />
         )}
 
-        <Form onSubmit={handleEmailLogin}>
+        {/* cv-dark-form turns Carbon label text white */}
+        <Form onSubmit={handleEmailLogin} className="cv-dark-form">
           <Stack gap={5}>
             <TextInput
               id="email"
@@ -118,43 +123,38 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f4f4f4',
+    backgroundColor: '#011261',
   },
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#011261',
     padding: '2.5rem',
     width: '100%',
     maxWidth: '420px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: '4px',
   },
   header: {
     marginBottom: '2rem',
     textAlign: 'center',
   },
-  title: {
-    fontSize: '2rem',
-    fontWeight: '600',
-    color: '#161616',
-    marginBottom: '0.25rem',
-  },
   subtitle: {
-    color: '#525252',
+    color: 'rgba(255,255,255,0.7)',
     fontSize: '0.875rem',
   },
   divider: {
     textAlign: 'center',
     margin: '1.25rem 0',
-    color: '#6f6f6f',
+    color: 'rgba(255,255,255,0.5)',
     fontSize: '0.875rem',
   },
   footer: {
     marginTop: '1.5rem',
     textAlign: 'center',
     fontSize: '0.875rem',
-    color: '#525252',
+    color: 'rgba(255,255,255,0.7)',
   },
   link: {
-    color: '#0f62fe',
+    color: '#7eb3ff',
     textDecoration: 'none',
   },
 };

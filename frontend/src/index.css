@@ -1,0 +1,131 @@
+/* ── CanonVault global styles ── */
+
+/* Override Carbon's fixed 48px header height so the logo has room */
+.cds--header {
+  height: 64px !important;
+  min-height: 64px !important;
+}
+
+/* Let the header name area expand and not clip */
+.cds--header__name {
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: visible !important;
+  padding: 0 1rem !important;
+}
+
+/* Remove Carbon's default link styling on the header name */
+.cds--header__name:hover {
+  background: transparent !important;
+}
+
+/* Header action buttons — vertically centre them in the taller header */
+.cds--header__global .cds--header__action,
+.cds--header__menu-trigger {
+  height: 64px !important;
+  width: 64px !important;
+}
+
+/* Push page content down to match the new header height */
+.cds--content {
+  margin-top: 64px !important;
+}
+
+/* ── Carbon form / progress label colour overrides for dark backgrounds ── */
+.cv-dark-form .cds--label,
+.cv-dark-form .cds--text-input__label-wrapper label,
+.cv-dark-form .cds--radio-button__label,
+.cv-dark-form .cds--radio-button__label-text,
+.cv-dark-form .cds--progress-step-button .cds--progress-label,
+.cv-dark-form .cds--progress-label {
+  color: #ffffff !important;
+}
+
+/* Radio button unselected circle — make visible on dark bg */
+.cv-dark-form .cds--radio-button__appearance {
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Radio button selected dot — white fill instead of Carbon's dark */
+.cv-dark-form .cds--radio-button:checked + .cds--radio-button__label .cds--radio-button__appearance::before {
+  background-color: #ffffff !important;
+}
+
+/* Selected circle border — full white when checked */
+.cv-dark-form .cds--radio-button:checked + .cds--radio-button__label .cds--radio-button__appearance {
+  border-color: #ffffff !important;
+}
+
+/* ── Login / Register / Onboarding card — hover glow ── */
+.cv-auth-card {
+  transition: box-shadow 0.4s ease, border-color 0.4s ease;
+}
+.cv-auth-card:hover {
+  box-shadow: 0 0 32px 6px rgba(255, 255, 255, 0.18),
+              0 0 8px  2px rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* ── Feature cards on Browse page — subtle white glow ── */
+.cv-feature-card {
+  transition: box-shadow 0.4s ease, border-color 0.4s ease !important;
+}
+.cv-feature-card:hover {
+  box-shadow: 0 0 28px 5px rgba(255, 255, 255, 0.15),
+              0 0 8px  2px rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* ── Browse page Sign In button — smooth hover with glow ── */
+.cv-signin-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+  padding: 0.4rem 1.25rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.35s ease, color 0.35s ease,
+              box-shadow 0.35s ease, border-color 0.35s ease;
+}
+.cv-signin-btn:hover {
+  background: #ffffff;
+  color: #011261;
+  border-color: #ffffff;
+  box-shadow: 0 0 16px 4px rgba(255, 255, 255, 0.25);
+}
+
+/* ── Story Editor — header icon buttons (Back + Sign Out) white ── */
+.cds--header__action {
+  color: #ffffff !important;
+}
+.cds--header__action:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+/* ── Story Editor — sidebar tab hover (white fill, navy text) ── */
+.cv-sidebar-tab:hover {
+  background: #ffffff !important;
+  color: #011261 !important;
+}
+.cv-sidebar-tab--active {
+  color: #ffffff !important;
+  border-bottom: 2px solid #ffffff !important;
+  font-weight: 700 !important;
+}
+
+/* ── Story Editor — Upload File button hover ── */
+.cv-upload-btn:hover:not(:disabled) {
+  background: #011261 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px 3px rgba(1, 18, 97, 0.25);
+}
+
+/* ── Story Editor — Publish button hover (navy fill, white text, glow) ── */
+.cv-publish-btn:hover {
+  background: #011261 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 14px 4px rgba(1, 18, 97, 0.3);
+}
