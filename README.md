@@ -2,7 +2,7 @@
 
 > A centralized creative writing management platform with AI-powered story bible, continuity checking, and public publishing.
 
-Built for the **IBM Global AI Builders Challenge — July 2025: Reimagine Creative Industries with AI**.
+Built for the **IBM Global AI Builders Challenge — July 2026: Reimagine Creative Industries with AI**.
 
 ---
 
@@ -246,21 +246,4 @@ This solution was discovered collaboratively with IBM Bob, which helped diagnose
 
 ---
 
-## Adding Screenshots to This README
-
-To add screenshots (recommended for judges):
-
-1. Create a folder in the repo: `docs/screenshots/`
-2. Add your image files there (e.g. `dashboard.png`, `story-bible.png`)
-3. Reference them in the README like this:
-
-```markdown
-![Dashboard](docs/screenshots/dashboard.png)
-![Story Bible](docs/screenshots/story-bible.png)
-```
-
-GitHub renders these automatically. For best results use PNG files at around 1200px wide.
-
----
-
-*IBM Global AI Builders Challenge July 2025 — Built by Terran Roberson (Terran-M-R)*
+*IBM Global AI Builders Challenge July 2026 — Built by Terran Roberson*
