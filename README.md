@@ -1,6 +1,6 @@
 # CanonVault
 
-> A centralized creative writing management platform with AI-powered story bible, continuity checking, and public publishing.
+> CanonVault is a centralized creative writing management platform that brings every stage of the writing process – drafting, organizing, checking, collaborating, and publishing into one place, powered by IBM's Granite AI.
 
 Built for the **IBM Global AI Builders Challenge — July 2026: Reimagine Creative Industries with AI**.
 
@@ -8,17 +8,17 @@ Built for the **IBM Global AI Builders Challenge — July 2026: Reimagine Creati
 
 ## Selected Challenge Theme
 
-**Reimagine Creative Industries with AI**
+**July Challenge - Reimagine Creative Industries with AI**
 
-CanonVault targets the creative writing industry — specifically the fragmented, error-prone process writers face when managing long-form fiction. By embedding IBM Granite AI directly into the writing workflow, CanonVault reimagines what a modern writing tool looks like when AI is a first-class collaborator rather than a bolt-on feature.
+CanonVault targets the creative writing industry, specifically the error-prone process writers face when managing long-form writing. Writers have no single place to manage the full lifecycle of their work. With no application that combines the full writing process, writing could take incredibly long time or discourage authors from completing their books. By embedding IBM Granite AI directly into the writing workflow, CanonVault reimagines what a modern writing tool looks like when AI is a collaborator rather than a bolt-on feature. 
 
 ---
 
 ## Problem Statement
 
-Creative writers — novelists, short story authors, and worldbuilders — have no single place to manage the full lifecycle of their work. They juggle notes apps, word processors, spreadsheets, and sticky notes just to keep track of their own characters, settings, and plot lines. The result is a fragmented, error-prone process where:
+Creative writers, novelists, and worldbuilders have no single place to manage the full lifecycle of their work. They juggle notes apps, word processors, spreadsheets, and sticky notes just to keep track of their own characters, settings, and plot lines. The result is a fragmented, error-prone process where:
 
-- **Details get lost** — character names, eye colours, and established world rules contradict themselves across chapters
+- **Details get lost** — character names, eye colors, and established world rules contradict themselves across chapters
 - **Continuity errors slip through** — plot holes and inconsistencies go unnoticed until readers catch them
 - **Collaboration is manual** — sharing a draft means emailing files back and forth with no version awareness
 - **Publishing is disconnected** — getting work in front of readers requires navigating entirely separate platforms
@@ -28,14 +28,15 @@ Creative writers — novelists, short story authors, and worldbuilders — have 
 
 ## Solution
 
-CanonVault is a centralized creative writing management platform that brings every stage of the writing process — drafting, organising, AI processing, continuity checking, collaborating, and publishing — into one place.
+CanonVault is a centralized creative writing management platform that brings every stage of the writing process — drafting, organizing, AI processing, continuity checking, collaborating, and publishing — into one place.
 
-- 📖 **Story Bible Editor** — a structured, searchable record of every character (appearance, traits, role, arc notes), setting (time period, description), and plot point (with spoiler flagging), all in a panel alongside the manuscript
-- 🤖 **IBM Granite AI Processing** — one click formats raw writing into proper novel structure, fixes grammar and dialogue, and simultaneously auto-extracts characters, settings, and plot points to populate the Story Bible
-- 🔍 **AI Continuity Checker** — Granite cross-references the manuscript against the Story Bible and surfaces specific contradictions, plot holes, and inconsistencies with concrete suggestions for how to fix each one
-- 🌐 **Public Publishing Page** — every story gets a clean public-facing book profile with cover art, genre, synopsis, and an AI-generated storyboard of key scenes
-- 👥 **Collaboration** — invite co-writers and editors by email with role-based access (viewer or editor)
-- 🖼 **Storyboard Generation** — AI generates scene illustrations from plot points, giving readers a visual preview of the story's most important moments
+- **Story Bible Editor:** Upon typing a manuscript or uploading one, AI processes it and creates/maintains a structured, searchable record of every character (with appearance, traits, role, and arc notes), every setting (with time period and description), and every plot point (with spoiler flagging) – all in one panel alongside their manuscript, it also grows as the user updates
+- **IBM Granite AI Processing:** With one click, IBM's Granite model reads the writer's raw draft, automatically formats it into proper novel structure (fixing grammar, dialogue punctuation, and paragraph flow), and simultaneously extracts characters, settings, and plot points to auto-populate the Story Bible – saving hours of manual entry
+- **AI Continuity Checker:** Granite cross-references the writer's manuscript against their Story Bible and previous chapters to surface specific contradictions, plot holes, and inconsistencies with concrete suggestions for how to fix each one — catching mistakes before readers do. Additionally, it acts as a craft-aware editor – advocating for moments to "show don't tell"
+- **AI Storyboard Generation:** When a writer publishes their work, CanonVault automatically generates scene illustrations for each key plot point using AI image generation, giving readers a visual preview of the story's most key moments (Writers can mark plot points as spoilers so they’re not generated on the published page)
+- **Public Publishing Page:** Every story gets a clean, public-facing book profile page with cover art, genre, synopsis, storyboard, and author information — shareable with anyone, no separate platform needed.  Writers can even showcase drafts of work to gain a following
+- **Collaboration:** Writers invite co-authors and editors by email with role-based access (viewer or editor), enabling real-time collaborative work on the same story
+
 
 ---
 
@@ -49,7 +50,7 @@ All AI features are powered by **IBM watsonx.ai — Granite 3 8B Instruct**, acc
 The manuscript is split into 1,200-word chunks. Each chunk is sent to Granite with a prompt instructing it to fix grammar, reformat dialogue with correct punctuation, and improve paragraph flow — without altering any plot details or character names. Chunks are processed sequentially and rejoined.
 
 **2. Story Bible Extraction (runs alongside formatting)**
-A 1,200-word sample is drawn from three points in the manuscript (beginning, middle, and end) to give Granite broad coverage of the story. Granite returns a structured JSON object containing arrays of characters, settings, and plot points. The backend parses the JSON and upserts each entry into the database — existing manually-entered entries are never overwritten by empty AI results.
+A 1,200-word sample is drawn from three points in the manuscript (beginning, middle, and end) to give Granite broad coverage of the story. Granite returns a structured JSON object containing arrays of characters, settings, and plot points. The backend parses the JSON and inserts each entry into the database — existing manually-entered entries are never overwritten by empty AI results.
 
 **3. Continuity Analysis (`POST /api/stories/:id/check-continuity`)**
 The Story Bible is serialised into a compact text summary and sent to Granite alongside a 2,000-word story excerpt. Granite returns a JSON array of flags — each with a `type` (continuity, plot_hole, show_dont_tell, suggestion), a `description`, and a concrete `suggestion` for the author to act on.
@@ -79,19 +80,15 @@ Node.js + Express (IBM Cloud Code Engine)
 
 ## How IBM Bob Was Used
 
-> IBM Bob (IBM's AI coding assistant) was the **primary development partner** for this project from day one.
+> IBM Bob (IBM's AI coding assistant) was the **primary development partner** for this project.
 
 Every sub-task, every file, and every bug fix in this project was planned, written, or diagnosed with IBM Bob. Specifically:
 
-- **Project architecture** — Bob designed the full stack (React frontend, Node.js backend, Supabase DB, Firebase Auth, watsonx.ai) and scaffolded every file from scratch
-- **All 9 sub-tasks** — Bob wrote the implementation for each sub-task end-to-end (see Development Journey below)
-- **IBM infrastructure navigation** — When IBM Cloud Object Storage could not be provisioned on the SkillsBuild tier, Bob diagnosed the 403 errors, identified the missing Runtime service association, and discovered the Deployment Space workaround
+- **Project architecture** — Bob designed the full stack (React frontend, Node.js backend, Supabase DB, Firebase Auth, watsonx.ai) and scaffolded every file
+- **All 9 sub-tasks** — After I developed a detailed prompt listing specific attributes I wanted to feature for the project, Bob wrote the implementation for each sub-task end-to-end (see Development Journey below)
+- **IBM infrastructure navigation** — Bob diagnosed 403 errors I encountered, identified the missing Runtime service association, and discovered the Deployment Space workaround
 - **Bug diagnosis** — Every runtime error (white screen crashes, CORS issues, Hugging Face DNS blocks, JSON truncation, COALESCE boolean bugs, Carbon Modal race conditions) was diagnosed and fixed by Bob
-- **UI design** — The full navy brand theme, animated feature carousel, sidebar tab system, AI processing popup, and all hover interactions were designed and implemented by Bob
-- **Token management** — Bob identified the cause of mid-JSON truncation (output token limit), redesigned the extraction sampling strategy, and added partial-recovery fallback logic
-- **This README** — written by Bob based on the full development history
-
-Bob was not used as a search engine or autocomplete — it was used as a true engineering partner, making architectural decisions, writing production code, and adapting to real constraints as they emerged.
+- **This README** — Most parts were written by IBM Bob based on the full development history. When starting new chats, I directed Bob to locate the ReadMe and Progress files to have context.
 
 ---
 
@@ -101,7 +98,7 @@ The project was planned and executed across 9 structured sub-tasks:
 
 | # | Sub-Task | Key Technologies |
 |---|----------|-----------------|
-| 1 | **Project Scaffolding & Repository Setup** — Initialised React + Vite frontend and Node.js + Express backend, set up GitHub repo and environment templates | React, Node.js, GitHub |
+| 1 | **Project Scaffolding & Repository Setup** — Initialized React + Vite frontend and Node.js + Express backend, set up GitHub repo and environment templates | React, Node.js, GitHub |
 | 2 | **Database Schema Design & Setup** — Designed full PostgreSQL schema across 16 migrations with Row Level Security on all 11 tables | PostgreSQL, Supabase, RLS |
 | 3 | **Authentication & Onboarding** — Firebase Authentication for sign-up/login and a multi-step onboarding survey | Firebase Auth, Carbon UI |
 | 4 | **Story Bible Editor (Core Dashboard)** — Split-panel writing workstation with auto-save, file upload (.txt/.docx), and full Story Bible sidebar | React, Carbon UI, Supabase |
@@ -109,7 +106,7 @@ The project was planned and executed across 9 structured sub-tasks:
 | 6 | **AI Continuity Checker** — Granite cross-references manuscript against Story Bible and returns structured flags with actionable fixes | IBM Granite, Node.js |
 | 7 | **Publishing Page & Storyboard Generation** — Public book profile page and async AI storyboard image generation | Pollinations.ai, Supabase |
 | 8 | **Collaboration Feature** — Role-based invite system (viewer/editor) with email-based access control | Supabase, Express |
-| 9 | **IBM Cloud Deployment & Final Polish** — Backend deployed to IBM Cloud Code Engine, full UI polish, Supabase RLS hardening | IBM Code Engine, CSS |
+| 9 | **IBM Cloud Deployment & Final Polish** — Backend deployed to IBM Cloud Code Engine, full UI polish, Supabase RLS hardening, this phase also included two weeks of testing and debugging | IBM Code Engine, CSS |
 
 ---
 
@@ -133,7 +130,7 @@ The project was planned and executed across 9 structured sub-tasks:
 | Database | PostgreSQL (Supabase) |
 | Authentication | Firebase Auth |
 | AI (Text) | IBM watsonx.ai — Granite 3 8B Instruct |
-| AI (Images) | Pollinations.ai (free, no API key required) |
+| AI (Images) | Pollinations.ai |
 | Hosting | IBM Cloud Code Engine |
 
 ---
@@ -211,38 +208,29 @@ All development was done locally before pushing to GitHub:
 
 ---
 
-## IBM watsonx.ai — Token Quota & Demo Constraints
+## Next Steps - IBM watsonx.ai — Token Quota & Demo Constraints
 
-> **Important note for judges**
+> **Important Notes Regarding to AI Tokens and Cloud Storage**
 
-IBM watsonx.ai Deployment Spaces on the free tier are allocated **300,000 tokens per month** per account. This is a hard account-level limit shared across all spaces — creating additional spaces does not provide additional quota.
+IBM watsonx.ai Deployment Spaces on the free tier are allocated **300,000 tokens per month** per account. This is a hard account-level limit shared across all spaces — creating additional spaces does not provide additional quota. In order to test and develop the demo, I needed to be cautious about the amount of tokens used throughout the process. For this reason, the full capabilities of CanonVault were limited.
 
-For the purposes of this hackathon demo, CanonVault was built and tested entirely within this free-tier constraint. Several real-world accommodations were made to stay within the limit:
+For the purposes of this hackathon demo, CanonVault was built and tested entirely within this free-tier constraint. Several accommodations were made to stay within the limit:
 
-- **Story Bible extraction** samples ~1,200 words spread across the manuscript (beginning, middle, and end) rather than processing the full text. This keeps each AI call within the model's context window while still giving meaningful cross-chapter coverage.
-- **Demo content** was pre-populated in the Story Bible to show a fully filled-out example, with AI auto-extraction demonstrated on a focused excerpt. The UI also fully supports manual entry for any characters, settings, or plot points the AI does not capture.
+- **Story Bible extraction** samples ~1,200 words spread across the manuscript (beginning, middle, and end) rather than processing the full text. This keeps each AI call within the model's context window while still giving meaningful cross-chapter coverage. Users are still able to manually input information.
+- **Demo content** AI auto-extraction demonstrated in the Story Bible focused on specific excerpts, so judges could observe the AI component of CanonVault while token usage could be reduced. Some of data in the Story Bible was manually entered so I wouldn't run out of tokens for the month.
 - **Testing was carefully rationed** to preserve enough tokens for a clean live demo of all AI features (text formatting, bible extraction, and continuity checking).
 
-In a production deployment, this constraint disappears entirely. IBM watsonx.ai's paid tiers provide usage-based billing with no monthly cap. A subscription model could be layered on top of CanonVault to pass through AI costs at scale — for example, metering tokens per user per month and upselling heavier AI usage to premium tiers.
+Following the IBM July Challenge, I could further develop CanonVault. As for next steps, I'd potentially implement different tiers of usage for the site. IBM watsonx.ai's paid tiers provide usage-based billing with no monthly cap. A subscription model could be layered on top of CanonVault to pass through AI costs at scale. For example, metering tokens per user per month and upselling heavier AI usage to premium tiers. Paid tiers would cover the cost of cloud usage while also allowing more data to be auto-extracted from manuscripts.
 
-The 300,000 token limit is not a reflection of CanonVault's capabilities — it is simply the boundary of what the free SkillsBuild account tier makes available for a hackathon project.
+The 300,000 token limit is not a reflection of CanonVault's capabilities, but rather it is a boundary of what I'm able to do with the free tier.
 
 ---
 
 ## IBM watsonx.ai — Deployment Space vs Studio Project
 
-During development, IBM Cloud Object Storage (required to create a watsonx.ai Studio Project) could not be provisioned on the student SkillsBuild account tier. As a workaround, a **watsonx.ai Deployment Space** was used instead — it provides identical access to Granite model inference via the same REST API, with only a minor parameter change (`space_id` instead of `project_id`). There is zero functional difference for CanonVault users.
+During development, IBM Cloud Object Storage (required to create a watsonx.ai Studio Project) could not be provisioned on the student SkillsBuild account tier. As a workaround, a **watsonx.ai Deployment Space** was used instead — it provides identical access to Granite model inference via the same REST API. There is zero functional difference for CanonVault users.
 
-This solution was discovered collaboratively with IBM Bob, which helped diagnose the 403 errors, identify the missing Runtime service association, and pivot from Studio Project to Deployment Space — a real-world example of using AI to navigate unexpected infrastructure challenges.
-
----
-
-## Hackathon Notes
-
-- AI token usage is metered per request — token consumption scales with manuscript length
-- A future subscription model is planned to manage AI costs at scale
-- Image generation uses Pollinations.ai (free, no API key, no rate limits for this use case)
-- Storyboard images are generated asynchronously after publishing so the user never waits
+This solution was discovered collaboratively with IBM Bob, which helped diagnose the 403 errors, identify the missing Runtime service association, and pivot from Studio Project to Deployment Space.
 
 ---
 
