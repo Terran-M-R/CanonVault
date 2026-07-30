@@ -234,4 +234,4 @@ This solution was discovered collaboratively with IBM Bob, which helped diagnose
 
 ---
 
-*IBM Global AI Builders Challenge July 2026 — Built by Terran Roberson*
+*IBM Global AI Builders Challenge July 2026 — Built by Terran Roberson — Connect with me on LinkedIn @ www.linkedin.com/in/terran-roberson*
