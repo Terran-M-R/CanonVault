@@ -5,7 +5,7 @@
 ---
 
 ## Project Overview
-**CanonVault** — IBM Hackathon July 2026 submission by Terran-M-R (Terran Roberson).
+**CanonVault** — IBM Hackathon July 2026 submission by Terran Roberson.
 A centralized creative writing management platform with AI-powered story bible, continuity checking, and public publishing.
 
 **GitHub:** https://github.com/Terran-M-R/CanonVault
